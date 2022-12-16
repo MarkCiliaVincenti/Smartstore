@@ -1,5 +1,4 @@
-﻿
-using Smartstore.Core.Catalog;
+﻿using Smartstore.Core.Catalog;
 using Smartstore.Core.Checkout.Orders.Reporting;
 using Smartstore.Core.Security;
 using Smartstore.Core.Stores;
@@ -9,7 +8,7 @@ using Smartstore.Web.Models.Catalog;
 
 namespace Smartstore.Web.Components
 {
-    public class HomeBestSellersViewComponent : SmartViewComponent
+    public class HomeBestsellersViewComponent : SmartViewComponent
     {
         private readonly SmartDbContext _db;
         private readonly CatalogHelper _catalogHelper;
@@ -18,7 +17,7 @@ namespace Smartstore.Web.Components
         private readonly IStoreMappingService _storeMappingService;
         private readonly CatalogSettings _catalogSettings;
 
-        public HomeBestSellersViewComponent(
+        public HomeBestsellersViewComponent(
             SmartDbContext db,
             CatalogHelper catalogHelper,
             IAclService aclService,
@@ -41,7 +40,7 @@ namespace Smartstore.Web.Components
                 return Empty();
             }
 
-            var bestsellersEvent = new ViewComponentExecutingEvent<List<BestsellersReportLine>>(ViewComponentContext);
+            var bestsellersEvent = new ViewComponentInvokingEvent<List<BestsellersReportLine>>(ViewComponentContext);
             await _eventPublisher.PublishAsync(bestsellersEvent);
 
             var storeId = Services.StoreContext.CurrentStore.Id;

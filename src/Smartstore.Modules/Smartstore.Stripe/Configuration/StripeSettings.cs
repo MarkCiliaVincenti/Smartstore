@@ -1,6 +1,4 @@
-﻿// TODO: (mh) (core) Make nullable
-
-using Smartstore.Core.Configuration;
+﻿using Smartstore.Core.Configuration;
 
 namespace Smartstore.StripeElements.Settings
 {

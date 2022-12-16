@@ -1,5 +1,6 @@
 ﻿using DouglasCrockford.JsMin;
 using Microsoft.AspNetCore.Html;
+using Microsoft.AspNetCore.Mvc.ViewComponents;
 using Smartstore.Core.Widgets;
 using Smartstore.Events;
 using Smartstore.Google.Analytics.Services;
@@ -12,7 +13,7 @@ namespace Smartstore.Google.Analytics
         private static readonly Dictionary<Type, string> _interceptableViewComponents = new()
         {
             { typeof(HomeProductsViewComponent), "home_page_after_products" },
-            { typeof(HomeBestSellersViewComponent), "home_page_after_bestsellers" },
+            { typeof(HomeBestsellersViewComponent), "home_page_after_bestsellers" },
             { typeof(RecentlyViewedProductsViewComponent), "after_recently_viewed_products" },
             { typeof(CrossSellProductsViewComponent), "after_cross_sell_products" }
         };
@@ -40,9 +41,8 @@ namespace Smartstore.Google.Analytics
             {
                 return;
             }
-            else
+            else if (message.Result is ViewViewComponentResult viewResult && viewResult.ViewData.Model is ProductSummaryModel model)
             {
-                var model = (ProductSummaryModel)message.Model;
                 var productList = model.Items;
                 var componentName = message.Descriptor.ShortName;
 
