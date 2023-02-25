@@ -66,7 +66,7 @@
         <Value>Restart installation</Value>
     </LocaleResource>
     <LocaleResource Name="RestartInstallationTooltip">
-        <Value>Click to restart the installation process (clear all cached values)</Value>
+        <Value>Restarts the application to restart the installation</Value>
     </LocaleResource>
     <LocaleResource Name="SetupFailed">
         <Value>Setup failed: {0}</Value>
@@ -91,6 +91,12 @@
     </LocaleResource>
     <LocaleResource Name="UseMySql">
         <Value>MySql</Value>
+    </LocaleResource>
+    <LocaleResource Name="UsePostgreSql">
+        <Value>PostgreSQL</Value>
+    </LocaleResource>
+    <LocaleResource Name="UseSqlite">
+        <Value>SQLite (not suitable for use in production!)</Value>
     </LocaleResource>
     <LocaleResource Name="StoreInformation">
         <Value>Store information</Value>
@@ -171,7 +177,7 @@
         <Value>Connection</Value>
     </LocaleResource>
     <LocaleResource Name="Server">
-        <Value>Server</Value>
+        <Value>Data source</Value>
     </LocaleResource>
     <LocaleResource Name="Authentication">
         <Value>Authentication</Value>
@@ -196,5 +202,8 @@
     </LocaleResource>
     <LocaleResource Name="DbUserIdRequired">
         <Value>'Username' is required</Value>
+    </LocaleResource>
+    <LocaleResource Name="AreYouSure">
+        <Value>Are you sure?</Value>
     </LocaleResource>
 </Language>

@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Html;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewComponents;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
-using Smartstore.ComponentModel;
+using Newtonsoft.Json.Linq;
 using Smartstore.Engine.Modularity;
 using Smartstore.Utilities;
 
@@ -47,7 +47,7 @@ namespace Smartstore.Core.Widgets
                 widget.Module = moduleDescriptor?.SystemName;
             }
 
-            widget.Arguments ??= FixComponentArguments(context, widget);
+            var arguments = GetComponentArguments(context, widget);
 
             var writer = context.Writer;
             if (writer == null)
@@ -61,34 +61,54 @@ namespace Smartstore.Core.Widgets
             // IViewComponentHelper is stateful, we want to make sure to retrieve it every time we need it.
             var viewComponentHelper = context.HttpContext.RequestServices.GetRequiredService<IViewComponentHelper>();
             (viewComponentHelper as IViewContextAware)?.Contextualize(viewContext);
-            var result = GetViewComponentResult(widget, viewComponentHelper);
+            var result = GetViewComponentResult(widget, arguments, viewComponentHelper);
             
             return result;
         }
 
-        private static Task<IHtmlContent> GetViewComponentResult(ComponentWidget widget, IViewComponentHelper viewComponentHelper)
+        private static Task<IHtmlContent> GetViewComponentResult(ComponentWidget widget, object? arguments, IViewComponentHelper viewComponentHelper)
         {
             if (widget.ComponentType == null)
             {
-                return viewComponentHelper.InvokeAsync(widget.ComponentName, widget.Arguments);
+                return viewComponentHelper.InvokeAsync(widget.ComponentName, arguments);
             }
             else
             {
-                return viewComponentHelper.InvokeAsync(widget.ComponentType, widget.Arguments);
+                return viewComponentHelper.InvokeAsync(widget.ComponentType, arguments);
             }
         }
 
-        private object? FixComponentArguments(WidgetContext context, ComponentWidget widget)
+        private object? GetComponentArguments(WidgetContext context, ComponentWidget widget)
         {
-            var model = context.Model ?? context.ViewData?.Model;
+            var arguments = widget.Arguments;
+            
+            if (arguments is JObject jobj)
+            {
+                // ConvertUtility.ObjectToDictionary can handle JObject
+                arguments = ConvertUtility.ObjectToDictionary(arguments, null);
+            }
 
+            if (arguments is IDictionary<string, object?> currentArguments)
+            {
+                // Check whether input args dictionary has correct types,
+                // since JsonConverter is not always able to deserialize as required
+                // (e.g. Int64 instead of Int32).
+                FixArgumentDictionary(currentArguments, currentArguments);
+                return currentArguments;
+            }
+
+            if (arguments != null)
+            {
+                return arguments;
+            }
+
+            var model = context.Model ?? context.ViewData?.Model;
             if (model == null)
             {
                 return null;
             }
 
-            var descriptor = SelectComponent(widget);
-
+            ViewComponentDescriptor descriptor = SelectComponent(widget);
             if (descriptor.Parameters.Count == 0)
             {
                 return null;
@@ -99,7 +119,7 @@ namespace Smartstore.Core.Widgets
                 return model;
             }
 
-            var currentArguments = FastProperty.ObjectToDictionary(model);
+            currentArguments = ConvertUtility.ObjectToDictionary(model, null);
             if (currentArguments.Count == 0)
             {
                 return null;
@@ -107,25 +127,38 @@ namespace Smartstore.Core.Widgets
 
             // We gonna select arguments from current args list only if they exist in the 
             // component descriptor's parameter list and the types match.
-            var fixedArguments = new Dictionary<string, object>(currentArguments.Count, StringComparer.OrdinalIgnoreCase);
+            var fixedArguments = new Dictionary<string, object?>(currentArguments.Count, StringComparer.OrdinalIgnoreCase);
+            FixArgumentDictionary(currentArguments, fixedArguments, descriptor);
 
-            foreach (var para in descriptor.Parameters)
+            return fixedArguments;
+
+            void FixArgumentDictionary(
+                IDictionary<string, object?> currentArgs, 
+                IDictionary<string, object?> fixedArgs, 
+                ViewComponentDescriptor? descriptor = null)
             {
-                if (para.Name is null)
+                descriptor ??= SelectComponent(widget);
+
+                foreach (var para in descriptor.Parameters)
                 {
-                    continue;
-                }
-                
-                if (currentArguments.TryGetValue(para.Name, out var value))
-                {
-                    if (value != null && para.ParameterType.IsAssignableFrom(value.GetType()))
+                    if (para.Name is null)
                     {
-                        fixedArguments[para.Name] = value;
+                        continue;
+                    }
+
+                    if (currentArgs.TryGetValue(para.Name, out var value) && value != null)
+                    {
+                        if (para.ParameterType.IsAssignableFrom(value.GetType()))
+                        {
+                            fixedArgs[para.Name] = value;
+                        }
+                        else if (ConvertUtility.TryConvert(value, para.ParameterType, out var convertedValue))
+                        {
+                            fixedArgs[para.Name] = convertedValue!;
+                        }
                     }
                 }
             }
-
-            return fixedArguments;
         }
 
         private ViewComponentDescriptor SelectComponent(ComponentWidget widget)

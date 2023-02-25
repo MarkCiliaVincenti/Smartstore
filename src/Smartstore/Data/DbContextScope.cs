@@ -8,7 +8,7 @@ namespace Smartstore.Data
 {
     public class DbContextScope : Disposable
     {
-        private readonly HookingDbContext _ctx;
+        private readonly HookingDbContext _db;
         private readonly bool _autoDetectChangesEnabled;
         private readonly HookImportance _minHookImportance;
         private readonly bool _lazyLoadingEnabled;
@@ -22,7 +22,7 @@ namespace Smartstore.Data
         /// Creates a scope in which a DbContext instance behaves differently. 
         /// The behaviour is resetted on disposal of the scope to what it was before.
         /// </summary>
-        /// <param name="ctx">The context instance to change behavior for.</param>
+        /// <param name="db">The context instance to change behavior for.</param>
         /// <param name="deferCommit">
         /// Suppresses the execution of <see cref="DbContext.SaveChanges()"/> / <see cref="DbContext.SaveChangesAsync(CancellationToken)"/> 
         /// until this instance is disposed or <see cref="Commit()"/> / <see cref="CommitAsync(CancellationToken)"/> is called explicitly.
@@ -30,7 +30,7 @@ namespace Smartstore.Data
         /// <param name="retainConnection">
         /// Opens connection and retains it until disposal. May increase load/save performance in large scopes.
         /// </param>
-        public DbContextScope(HookingDbContext ctx,
+        public DbContextScope(HookingDbContext db,
             bool? autoDetectChanges = null,
             bool? lazyLoading = null,
             bool? forceNoTracking = null,
@@ -40,14 +40,13 @@ namespace Smartstore.Data
             CascadeTiming? cascadeDeleteTiming = null,
             CascadeTiming? deleteOrphansTiming = null)
         {
-            Guard.NotNull(ctx, nameof(ctx));
+            _db = Guard.NotNull(db);
 
-            var changeTracker = ctx.ChangeTracker;
+            var changeTracker = db.ChangeTracker;
 
-            _ctx = ctx;
             _autoDetectChangesEnabled = changeTracker.AutoDetectChangesEnabled;
-            _minHookImportance = ctx.MinHookImportance;
-            _suppressCommit = ctx.SuppressCommit;
+            _minHookImportance = db.MinHookImportance;
+            _suppressCommit = db.SuppressCommit;
             _lazyLoadingEnabled = changeTracker.LazyLoadingEnabled;
             _queryTrackingBehavior = changeTracker.QueryTrackingBehavior;
             _cascadeDeleteTiming = changeTracker.CascadeDeleteTiming;
@@ -58,7 +57,7 @@ namespace Smartstore.Data
                 changeTracker.AutoDetectChangesEnabled = autoDetectChanges.Value;
 
             if (minHookImportance.HasValue)
-                ctx.MinHookImportance = minHookImportance.Value;
+                db.MinHookImportance = minHookImportance.Value;
 
             if (lazyLoading.HasValue)
                 changeTracker.LazyLoadingEnabled = lazyLoading.Value;
@@ -67,7 +66,7 @@ namespace Smartstore.Data
                 changeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
 
             if (deferCommit.HasValue)
-                ctx.SuppressCommit = deferCommit.Value;
+                db.SuppressCommit = deferCommit.Value;
 
             if (cascadeDeleteTiming.HasValue)
                 changeTracker.CascadeDeleteTiming = cascadeDeleteTiming.Value;
@@ -76,10 +75,10 @@ namespace Smartstore.Data
                 changeTracker.DeleteOrphansTiming = deleteOrphansTiming.Value;
 
             if (retainConnection)
-                ctx.Database.OpenConnection();
+                db.Database.OpenConnection();
         }
 
-        public HookingDbContext DbContext => _ctx;
+        public HookingDbContext DbContext => _db;
 
         public Task LoadCollectionAsync<TEntity, TCollection>(
             TEntity entity,
@@ -89,7 +88,7 @@ namespace Smartstore.Data
             where TEntity : BaseEntity
             where TCollection : BaseEntity
         {
-            return _ctx.LoadCollectionAsync(entity, navigationProperty, force, queryAction);
+            return _db.LoadCollectionAsync(entity, navigationProperty, force, queryAction);
         }
 
         public Task LoadReferenceAsync<TEntity, TProperty>(
@@ -99,7 +98,7 @@ namespace Smartstore.Data
             where TEntity : BaseEntity
             where TProperty : BaseEntity
         {
-            return _ctx.LoadReferenceAsync(entity, navigationProperty, force);
+            return _db.LoadReferenceAsync(entity, navigationProperty, force);
         }
 
         /// <summary>
@@ -107,16 +106,16 @@ namespace Smartstore.Data
         /// </summary>
         public int Commit()
         {
-            var suppressCommit = _ctx.SuppressCommit;
+            var suppressCommit = _db.SuppressCommit;
 
             try
             {
-                _ctx.SuppressCommit = false;
-                return _ctx.SaveChanges();
+                _db.SuppressCommit = false;
+                return _db.SaveChanges();
             }
             finally
             {
-                _ctx.SuppressCommit = suppressCommit;
+                _db.SuppressCommit = suppressCommit;
             }
         }
 
@@ -125,16 +124,16 @@ namespace Smartstore.Data
         /// </summary>
         public Task<int> CommitAsync(CancellationToken cancelToken = default)
         {
-            var suppressCommit = _ctx.SuppressCommit;
+            var suppressCommit = _db.SuppressCommit;
 
             try
             {
-                _ctx.SuppressCommit = false;
-                return _ctx.SaveChangesAsync(cancelToken);
+                _db.SuppressCommit = false;
+                return _db.SaveChangesAsync(cancelToken);
             }
             finally
             {
-                _ctx.SuppressCommit = suppressCommit;
+                _db.SuppressCommit = suppressCommit;
             }
         }
 
@@ -143,13 +142,13 @@ namespace Smartstore.Data
             if (disposing)
             {
                 // Must come before ResetState()
-                if (_ctx.SuppressCommit && _ctx.DeferCommit)
+                if (_db.SuppressCommit && _db.DeferCommit)
                     Commit();
 
                 ResetState();
 
-                if (_retainConnection && _ctx.Database.GetDbConnection().State == ConnectionState.Open)
-                    _ctx.Database.CloseConnection();
+                if (_retainConnection && _db.Database.GetDbConnection().State == ConnectionState.Open)
+                    _db.Database.CloseConnection();
             }
         }
 
@@ -158,22 +157,22 @@ namespace Smartstore.Data
             if (disposing)
             {
                 // Must come before ResetState()
-                if (_ctx.SuppressCommit && _ctx.DeferCommit)
+                if (_db.SuppressCommit && _db.DeferCommit)
                     await CommitAsync();
 
                 ResetState();
 
-                if (_retainConnection && _ctx.Database.GetDbConnection().State == ConnectionState.Open)
-                    await _ctx.Database.CloseConnectionAsync();
+                if (_retainConnection && _db.Database.GetDbConnection().State == ConnectionState.Open)
+                    await _db.Database.CloseConnectionAsync();
             }
         }
 
         private void ResetState()
         {
-            var changeTracker = _ctx.ChangeTracker;
+            var changeTracker = _db.ChangeTracker;
 
-            _ctx.MinHookImportance = _minHookImportance;
-            _ctx.SuppressCommit = _suppressCommit;
+            _db.MinHookImportance = _minHookImportance;
+            _db.SuppressCommit = _suppressCommit;
 
             changeTracker.AutoDetectChangesEnabled = _autoDetectChangesEnabled;
             changeTracker.LazyLoadingEnabled = _lazyLoadingEnabled;

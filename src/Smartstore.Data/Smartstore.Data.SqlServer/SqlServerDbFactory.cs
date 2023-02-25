@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query;
 using Smartstore.Data.Providers;
+using Smartstore.Data.SqlServer.Translators;
 
 namespace Smartstore.Data.SqlServer
 {
@@ -21,7 +22,7 @@ namespace Smartstore.Data.SqlServer
             string userId,
             string password)
         {
-            Guard.NotEmpty(server, nameof(server));
+            Guard.NotEmpty(server);
 
             var builder = new SqlConnectionStringBuilder
             {
@@ -91,14 +92,14 @@ namespace Smartstore.Data.SqlServer
                     sql.CommandTimeout(commandTimeout);
                 })
                 .ReplaceService<IMethodCallTranslatorProvider, SqlServerMappingMethodCallTranslatorProvider>();
-
+            
             return (TContext)Activator.CreateInstance(typeof(TContext), new object[] { optionsBuilder.Options });
         }
 
         public override DbContextOptionsBuilder ConfigureDbContext(DbContextOptionsBuilder builder, string connectionString)
         {
-            Guard.NotNull(builder, nameof(builder));
-            Guard.NotEmpty(connectionString, nameof(connectionString));
+            Guard.NotNull(builder);
+            Guard.NotEmpty(connectionString);
 
             return builder.UseSqlServer(connectionString, sql =>
             {
@@ -123,6 +124,11 @@ namespace Smartstore.Data.SqlServer
                 }
             })
             .ReplaceService<IMethodCallTranslatorProvider, SqlServerMappingMethodCallTranslatorProvider>();
+        }
+
+        protected override UnifiedModelBuilderFacade CreateModelBuilderFacade()
+        {
+            return new SqlServerModelBuilderFacade();
         }
     }
 }

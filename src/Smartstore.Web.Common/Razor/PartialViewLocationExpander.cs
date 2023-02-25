@@ -14,8 +14,8 @@ namespace Smartstore.Web.Razor
             {
                 if (doExpand)
                 {
-                    yield return format.Replace("{0}", "Layouts/{0}");
                     yield return format.Replace("{0}", "Partials/{0}");
+                    yield return format.Replace("{0}", "Layouts/{0}");
                 }
 
                 yield return format;
@@ -24,7 +24,7 @@ namespace Smartstore.Web.Razor
 
         public void PopulateValues(ViewLocationExpanderContext context)
         {
-            if (!context.IsMainPage && !context.ViewName.StartsWith("Components/", StringComparison.OrdinalIgnoreCase))
+            if (!context.IsMainPage && !context.ViewName.StartsWithNoCase("Components/"))
             {
                 context.Values[ParamKey] = "true";
             }

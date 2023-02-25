@@ -15,11 +15,11 @@ namespace Smartstore.Core.Theming
             _directoryData = directoryData;
             _descriptor = new ThemeDescriptor
             {
-                Name = directoryData.Directory.Name,
+                Name = directoryData.Name,
                 ConfigurationFile = directoryData.ConfigurationFile,
                 IsSymbolicLink = directoryData.IsSymbolicLink,
                 BaseThemeName = directoryData.BaseTheme,
-                Path = "/Themes/" + directoryData.Directory.Name + "/",
+                Path = "/Themes/" + directoryData.Name + "/",
                 PhysicalPath = directoryData.Directory.PhysicalPath
             };
         }
@@ -35,6 +35,7 @@ namespace Smartstore.Core.Theming
             _descriptor.ProjectUrl = root.GetAttribute("url").NullEmpty();
             _descriptor.Version = new Version(root.GetAttribute("version").NullEmpty() ?? "1.0");
             _descriptor.MinAppVersion = SmartstoreVersion.Version;
+            _descriptor.CompanionModuleName = root.GetAttribute("module").NullEmpty();
 
             _descriptor.Selects = MaterializeSelects();
             _descriptor.Variables = MaterializeVariables();

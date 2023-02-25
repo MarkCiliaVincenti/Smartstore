@@ -646,7 +646,7 @@ namespace Smartstore.Admin.Controllers
                         // Customer roles.
                         if (allowManagingCustomerRoles)
                         {
-                            using var scope = new DbContextScope(ctx: Services.DbContext, autoDetectChanges: false);
+                            using var scope = new DbContextScope(db: Services.DbContext, autoDetectChanges: false);
                             var existingMappings = customer.CustomerRoleMappings
                                 .Where(x => !x.IsSystemMapping)
                                 .ToMultimap(x => x.CustomerRoleId, x => x);
@@ -1146,16 +1146,23 @@ namespace Smartstore.Admin.Controllers
 
         [HttpPost]
         [Permission(Permissions.Customer.DeleteAddress)]
-        public async Task<IActionResult> AddressDelete(int addressId)
+        public async Task<IActionResult> AddressDelete(int customerId, int addressId)
         {
             var success = false;
-            var address = await _db.Addresses.FindByIdAsync(addressId);
+            var customer = await _db.Customers
+                .Include(x => x.Addresses)
+                .FindByIdAsync(customerId);
 
-            if (address != null)
+            if (customer != null)
             {
-                _db.Addresses.Remove(address);
-                await _db.SaveChangesAsync();
-                success = true;
+                var address = customer.Addresses.FirstOrDefault(x => x.Id == addressId);
+                if (address != null)
+                {
+                    customer.RemoveAddress(address);
+                    _db.Addresses.Remove(address);
+                    await _db.SaveChangesAsync();
+                    success = true;
+                }
             }
 
             return new JsonResult(success);

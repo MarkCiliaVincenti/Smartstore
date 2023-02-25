@@ -362,12 +362,12 @@ namespace Smartstore.Core.Installation
             }
             finally
             {
-                if (model.CallbackUrl.IsWebUrl() && result.Completed)
+                if (model.CallbackUrl.HasValue() && model.CallbackUrl.IsWebUrl() && result.Completed)
                 {
                     // Call webhook if given
                     var httpClient = _httpClientFactory.CreateClient();
 
-                    // Fire & foget
+                    // Fire & forget
                     _ = httpClient.PostAsJsonAsync(model.CallbackUrl, result, cancellationToken: cancelToken);
                 }
             }
@@ -400,11 +400,12 @@ namespace Smartstore.Core.Installation
 
             modularState.InstalledModules.Clear();
 
-            using var dbScope = new DbContextScope(db, minHookImportance: HookImportance.Essential, retainConnection: true);
+            using var dbScope = new DbContextScope(db, minHookImportance: HookImportance.Essential);
 
             var installContext = new ModuleInstallationContext
             {
                 ApplicationContext = _appContext,
+                Scope = scope,
                 SeedSampleData = model.InstallSampleData,
                 Culture = model.PrimaryLanguage,
                 Stage = ModuleInstallationStage.AppInstallation,

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query;
 using MySqlConnector;
+using Smartstore.Data.MySql.Translators;
 using Smartstore.Data.Providers;
 
 namespace Smartstore.Data.MySql
@@ -21,7 +22,7 @@ namespace Smartstore.Data.MySql
             string userId,
             string password)
         {
-            Guard.NotEmpty(server, nameof(server));
+            Guard.NotEmpty(server);
 
             var builder = new MySqlConnectionStringBuilder
             {
@@ -58,6 +59,9 @@ namespace Smartstore.Data.MySql
 
         public override DbContextOptionsBuilder ConfigureDbContext(DbContextOptionsBuilder builder, string connectionString)
         {
+            Guard.NotNull(builder);
+            Guard.NotEmpty(connectionString);
+
             return builder.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString), sql =>
             {
                 var extension = builder.Options.FindExtension<DbFactoryOptionsExtension>();

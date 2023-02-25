@@ -1,12 +1,17 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Smartstore.Core;
 using Smartstore.Core.Checkout.Orders;
 using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Data;
+using Smartstore.Core.Logging;
 using Smartstore.Core.Widgets;
+using Smartstore.PayPal.Client;
 using Smartstore.PayPal.Components;
+using Smartstore.PayPal.Services;
 using Smartstore.Web.Models.Checkout;
 
 namespace Smartstore.PayPal.Filters
@@ -15,33 +20,33 @@ namespace Smartstore.PayPal.Filters
     {
         private readonly SmartDbContext _db;
         private readonly ICommonServices _services;
-        private readonly IPaymentService _paymentService;
         private readonly PayPalSettings _settings;
         private readonly ICheckoutStateAccessor _checkoutStateAccessor;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly Lazy<IWidgetProvider> _widgetProvider;
-
+        private readonly PayPalHelper _payPalHelper;
+        
         public CheckoutFilter(
             SmartDbContext db,
             ICommonServices services,
-            IPaymentService paymentService,
             PayPalSettings settings,
             ICheckoutStateAccessor checkoutStateAccessor,
             IHttpContextAccessor httpContextAccessor,
-            Lazy<IWidgetProvider> widgetProvider)
+            Lazy<IWidgetProvider> widgetProvider,
+            PayPalHelper payPalHelper)
         {
             _db = db;
             _services = services;
-            _paymentService = paymentService;
             _settings = settings;
             _checkoutStateAccessor = checkoutStateAccessor;
             _httpContextAccessor = httpContextAccessor;
             _widgetProvider = widgetProvider;
+            _payPalHelper = payPalHelper;
         }
 
         public async Task OnResultExecutionAsync(ResultExecutingContext filterContext, ResultExecutionDelegate next)
         {
-            if (!await IsPayPalStandardActive())
+            if (!await _payPalHelper.IsPayPalStandardActiveAsync())
             {
                 await next();
                 return;
@@ -87,16 +92,17 @@ namespace Smartstore.PayPal.Filters
 
                 var session = _httpContextAccessor.HttpContext.Session;
 
-                if (!session.ContainsKey("OrderPaymentInfo"))
+                if (!session.TryGetObject<ProcessPaymentRequest>("OrderPaymentInfo", out var processPaymentRequest) || processPaymentRequest == null)
                 {
-                    session.TrySetObject("OrderPaymentInfo", new ProcessPaymentRequest
-                    {
-                        PayPalOrderId = (string)checkoutState.CustomProperties.Get("PayPalOrderId"),
-                        StoreId = _services.StoreContext.CurrentStore.Id,
-                        CustomerId = _services.WorkContext.CurrentCustomer.Id,
-                        PaymentMethodSystemName = "Payments.PayPalStandard"
-                    });
-                };
+                    processPaymentRequest = new ProcessPaymentRequest();
+                }
+
+                processPaymentRequest.PayPalOrderId = (string)checkoutState.CustomProperties.Get("PayPalOrderId");
+                processPaymentRequest.StoreId = _services.StoreContext.CurrentStore.Id;
+                processPaymentRequest.CustomerId = _services.WorkContext.CurrentCustomer.Id;
+                processPaymentRequest.PaymentMethodSystemName = "Payments.PayPalStandard";
+
+                _httpContextAccessor.HttpContext.Session.TrySetObject("OrderPaymentInfo", processPaymentRequest);
 
                 // Delete property for backward navigation.
                 checkoutState.CustomProperties.Remove("PayPalButtonUsed");
@@ -106,8 +112,5 @@ namespace Smartstore.PayPal.Filters
 
             await next();
         }
-
-        private Task<bool> IsPayPalStandardActive()
-            => _paymentService.IsPaymentMethodActiveAsync("Payments.PayPalStandard", null, _services.StoreContext.CurrentStore.Id);
     }
 }

@@ -607,7 +607,7 @@ namespace Smartstore.PayPal.Client
             CancellationToken cancelToken = default)
             where TRequest : PayPalRequest
         {
-            return ExecuteRequestAsync(request, 0, cancelToken);
+            return ExecuteRequestAsync(request, _storeContext.CurrentStore.Id, cancelToken);
         }
 
         public Task<PayPalResponse> ExecuteRequestAsync<TRequest>(
@@ -760,7 +760,8 @@ namespace Smartstore.PayPal.Client
             // ContentType can also be 'application/json; charset=utf-8'
             if (contentType.Contains("application/json"))
             {
-                var message = JsonConvert.DeserializeObject(await content.ReadAsStringAsync(), responseType);
+                var contentString = await content.ReadAsStringAsync();
+                var message = JsonConvert.DeserializeObject(contentString, responseType);
                 return message;
             }
             else

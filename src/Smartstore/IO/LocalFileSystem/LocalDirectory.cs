@@ -122,7 +122,7 @@ namespace Smartstore.IO
 
         public void MoveTo(string newPath)
         {
-            Guard.NotNull(newPath, nameof(newPath));
+            Guard.NotNull(newPath);
 
             if (!_di.Exists)
             {
@@ -145,9 +145,10 @@ namespace Smartstore.IO
             {
                 throw new DirectoryNotFoundException($"Directory '{SubPath}' does not exist.");
             }
-
+            
             return _di
                 .EnumerateFileSystemInfos(pattern, deep ? _deepEnumerationOptions : _flatEnumerationOptions)
+                .Where(x => !LocalFileSystem.IsExcluded(x))
                 .Select(x =>
                 {
                     if (x is FileInfo fi)
@@ -173,6 +174,7 @@ namespace Smartstore.IO
 
             return _di
                 .EnumerateDirectories(pattern, deep ? _deepEnumerationOptions : _flatEnumerationOptions)
+                .Where(x => !LocalFileSystem.IsExcluded(x))
                 .Select(ConvertDirectoryInfo);
         }
 
@@ -185,6 +187,7 @@ namespace Smartstore.IO
 
             return _di
                 .EnumerateFiles(pattern, deep ? _deepEnumerationOptions : _flatEnumerationOptions)
+                .Where(x => !LocalFileSystem.IsExcluded(x))
                 .Select(ConvertFileInfo);
         }
 

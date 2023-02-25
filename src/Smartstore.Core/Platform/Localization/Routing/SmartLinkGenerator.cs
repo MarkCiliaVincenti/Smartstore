@@ -146,9 +146,7 @@ namespace Smartstore.Core.Localization.Routing
 
             PathString TryAppendToPathBase(string culture)
             {
-                return pathBase == null
-                    ? new PathString('/' + culture)
-                    : pathBase.Value.Add(culture);
+                return (pathBase ?? httpContext.Request.PathBase).Add('/' + culture);
             }
         }
 

@@ -289,11 +289,18 @@ namespace Smartstore.Admin.Controllers
                 OperatingSystem = $"{runtimeInfo.OSDescription} ({runtimeInfo.ProcessArchitecture.ToString().ToLower()})"
             };
 
-            // DB size & used RAM
+            // DB size
             try
             {
-                var mbSize = await dataProvider.GetDatabaseSizeAsync();
-                model.DatabaseSize = Convert.ToInt64(mbSize * 1024 * 1024);
+                model.DatabaseSize = await dataProvider.GetDatabaseSizeAsync();
+            }
+            catch
+            {
+            }
+
+            // Used RAM
+            try
+            {
                 model.UsedMemorySize = GetPrivateBytes();
             }
             catch
@@ -305,7 +312,7 @@ namespace Smartstore.Admin.Controllers
             {
                 if (DataSettings.Instance.IsValid())
                 {
-                    model.DataProviderFriendlyName = DataSettings.Instance.DbFactory.DbSystem.ToString();
+                    model.DataProviderFriendlyName = dataProvider.ProviderFriendlyName;
                     model.ShrinkDatabaseEnabled = dataProvider.CanShrink && Services.Permissions.Authorize(Permissions.System.Maintenance.Read);
                 }
             }
@@ -812,13 +819,22 @@ namespace Smartstore.Admin.Controllers
 
             foreach (var fileName in selection.SelectedKeys)
             {
-                if (await root.TryDeleteFileAsync(BACKUP_DIR + "\\" + fileName))
+                var file = root.GetFile(PathUtility.Join(BACKUP_DIR, fileName));
+                if (file.Exists)
                 {
-                    numDeleted++;
+                    try
+                    {
+                        await file.DeleteAsync();
+                        numDeleted++;
+                    }
+                    catch (Exception ex)
+                    {
+                        NotifyError(ex);
+                    }
                 }
             }
 
-            return Json(new { Success = true, Count = numDeleted });
+            return Json(new { Success = numDeleted > 0, Count = numDeleted });
         }
 
         [Permission(Permissions.System.Maintenance.Execute)]

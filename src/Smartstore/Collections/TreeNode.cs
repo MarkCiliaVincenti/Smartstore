@@ -1,4 +1,6 @@
-﻿using System.Runtime.CompilerServices;
+﻿#nullable enable
+
+using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
 using Smartstore.Collections.JsonConverters;
 
@@ -8,14 +10,12 @@ namespace Smartstore.Collections
     public class TreeNode<TValue> : TreeNodeBase<TreeNode<TValue>>
     {
         public TreeNode(TValue value)
+            : this(value, (object?)null)
         {
-            Guard.NotNull(value, nameof(value));
-
-            Value = value;
         }
 
-        public TreeNode(TValue value, IEnumerable<TValue> children)
-            : this(value)
+        public TreeNode(TValue value, IEnumerable<TValue>? children)
+            : this(value, (object?)null)
         {
             if (children != null && children.Any())
             {
@@ -23,8 +23,8 @@ namespace Smartstore.Collections
             }
         }
 
-        public TreeNode(TValue value, IEnumerable<TreeNode<TValue>> children)
-            : this(value)
+        public TreeNode(TValue value, IEnumerable<TreeNode<TValue>>? children)
+            : this(value, (object?)null)
         {
             // for serialization
             if (children != null && children.Any())
@@ -33,93 +33,97 @@ namespace Smartstore.Collections
             }
         }
 
-        public TValue Value
+        public TreeNode(TValue value, object? id)
         {
-            get;
-            private set;
+            Value = Guard.NotNull(value);
+            _id = id ?? (value as IKeyedNode)?.GetNodeKey();
         }
+
+        public TValue Value { get; }
 
         protected override TreeNode<TValue> CreateInstance()
         {
             TValue value = this.Value;
 
-            if (value is ICloneable<TValue>)
+            if (value is ICloneable<TValue> clone)
             {
-                value = ((ICloneable<TValue>)value).Clone();
+                value = clone.Clone();
             }
 
-            var clonedNode = new TreeNode<TValue>(value);
+            var clonedNode = new TreeNode<TValue>(value, _id);
 
             // Assign or clone Metadata
             if (_metadata != null && _metadata.Count > 0)
             {
                 foreach (var kvp in _metadata)
                 {
-                    var metadataValue = kvp.Value is ICloneable
-                        ? ((ICloneable)kvp.Value).Clone()
+                    var metadataValue = kvp.Value is ICloneable cloneable
+                        ? cloneable.Clone()
                         : kvp.Value;
                     clonedNode.SetMetadata(kvp.Key, metadataValue);
                 }
             }
-
-            if (_id != null)
-            {
-                clonedNode._id = _id;
-            }
-
+            
             return clonedNode;
         }
 
-        public TreeNode<TValue> Append(TValue value, object id = null)
+        public TreeNode<TValue> Append(TValue value, object? id = null)
         {
-            var node = new TreeNode<TValue>(value);
-            node._id = id;
-            this.Append(node);
+            Guard.NotNull(value);
+
+            var node = new TreeNode<TValue>(value, id);
+
+            Append(node);
             return node;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AppendRange(IEnumerable<TValue> values)
         {
-            values.Each(x => Append(x));
+            foreach (var value in values)
+            {
+                Append(value);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AppendRange(IEnumerable<TValue> values, Func<TValue, object> idSelector)
+        public void AppendRange(IEnumerable<TValue> values, Func<TValue, object?> idSelector)
         {
-            Guard.NotNull(idSelector, nameof(idSelector));
+            Guard.NotNull(values);
+            Guard.NotNull(idSelector);
 
-            values.Each(x => Append(x, idSelector(x)));
+            foreach (var value in values)
+            {
+                Append(value, idSelector(value));
+            }
         }
 
-        public TreeNode<TValue> Prepend(TValue value, object id = null)
+        public TreeNode<TValue> Prepend(TValue value, object? id = null)
         {
-            var node = new TreeNode<TValue>(value);
-            node._id = id;
-            this.Prepend(node);
+            Guard.NotNull(value);
+
+            var node = new TreeNode<TValue>(value, id);
+
+            Prepend(node);
             return node;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public IEnumerable<TValue> Flatten(bool includeSelf = true)
         {
-            return this.Flatten(null, includeSelf);
+            return Flatten(null, includeSelf);
         }
 
-        public IEnumerable<TValue> Flatten(Func<TValue, bool> predicate, bool includeSelf = true)
+        public IEnumerable<TValue> Flatten(Func<TValue, bool>? predicate, bool includeSelf = true)
         {
-            IEnumerable<TValue> list;
-            if (includeSelf)
-            {
-                list = new[] { this.Value };
-            }
-            else
-            {
-                list = Enumerable.Empty<TValue>();
-            }
+            var list = includeSelf 
+                ? new[] { Value } 
+                : Enumerable.Empty<TValue>();
 
             if (!HasChildren)
+            {
                 return list;
+            }  
 
             var result = list.Union(Children.SelectMany(x => x.Flatten()));
             if (predicate != null)

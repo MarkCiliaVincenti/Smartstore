@@ -84,13 +84,13 @@ namespace Smartstore.IO
         /// <inheritdoc/>
         public string Directory
         {
-            get => _dir ??= SubPath.Substring(0, SubPath.Length - Name.Length);
+            get => _dir ??= SubPath[..^Name.Length];
         }
 
         /// <inheritdoc/>
         public string NameWithoutExtension
         {
-            get => _title ??= (PhysicalPath == null ? string.Empty : System.IO.Path.GetFileNameWithoutExtension(PhysicalPath));
+            get => _title ??= (PhysicalPath == null ? string.Empty : System.IO.Path.GetFileNameWithoutExtension(PhysicalPath).EmptyNull());
         }
 
         /// <inheritdoc/>
@@ -145,7 +145,7 @@ namespace Smartstore.IO
         {
             if (!Exists)
             {
-                throw new FileNotFoundException(PhysicalPath ?? SubPath);
+                throw new FileNotFoundException($"File '{PhysicalPath ?? SubPath}' not found.");
             }
 
             // We are setting buffer size to 1 to prevent FileStream from allocating it's internal buffer

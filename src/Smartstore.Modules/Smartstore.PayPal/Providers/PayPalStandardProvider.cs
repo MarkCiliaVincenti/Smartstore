@@ -1,4 +1,6 @@
-﻿using Smartstore.Core.Checkout.Orders;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Smartstore.Core.Checkout.Orders;
 using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Data;
 using Smartstore.Core.Widgets;
@@ -18,13 +20,15 @@ namespace Smartstore.PayPal.Providers
         private readonly SmartDbContext _db;
         private readonly PayPalHttpClient _client;
         private readonly PayPalSettings _settings;
-
+        
         public PayPalStandardProvider(SmartDbContext db, PayPalHttpClient client, PayPalSettings settings)
         {
             _db = db;
             _client = client;
             _settings = settings;
         }
+
+        public ILogger Logger { get; set; } = NullLogger.Instance;
 
         public RouteInfo GetConfigurationRoute()
             => new("Configure", "PayPal", new { area = "Admin" });
@@ -58,13 +62,21 @@ namespace Smartstore.PayPal.Providers
 
             _ = await _client.UpdateOrderAsync(request, result);
 
-            if (_settings.Intent == PayPalTransactionType.Authorize)
+            try
             {
-                var response = await _client.AuthorizeOrderAsync(request, result);
+                if (_settings.Intent == PayPalTransactionType.Authorize)
+                {
+                    var response = await _client.AuthorizeOrderAsync(request, result);
+                }
+                else
+                {
+                    var response = await _client.CaptureOrderAsync(request, result);
+                }
             }
-            else
+            catch (Exception ex) 
             {
-                var response = await _client.CaptureOrderAsync(request, result);
+                Logger.LogError(ex, "Authorization or capturing failed. User was redirected to payment selection.");
+                throw new PayPalException(T("Plugins.Smartstore.PayPal.OrderUpdateFailed"));
             }
 
             return result;

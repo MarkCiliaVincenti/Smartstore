@@ -23,7 +23,7 @@ namespace Smartstore.IO
         /// </summary>
         public LocalFileSystem(string root)
         {
-            Guard.NotEmpty(root, nameof(root));
+            Guard.NotEmpty(root);
 
             _filters = ExclusionFilters.Sensitive;
             _provider = new PhysicalFileProvider(root, _filters);
@@ -78,7 +78,8 @@ namespace Smartstore.IO
                 return false;
             }
 
-            return File.Exists(fullPath);
+            var file = new FileInfo(fullPath);
+            return !IsExcluded(file) && file.Exists;
         }
 
         public override bool DirectoryExists(string subpath)
@@ -89,21 +90,36 @@ namespace Smartstore.IO
                 return false;
             }
 
-            return Directory.Exists(fullPath);
+            var dir = new DirectoryInfo(fullPath);
+            return !IsExcluded(dir) && dir.Exists;
         }
 
         public override IFile GetFile(string subpath)
         {
             var fullPath = MapPathInternal(ref subpath, true, false);
-            return fullPath.HasValue()
-                ? new LocalFile(subpath, new FileInfo(fullPath), this)
+            if (string.IsNullOrEmpty(fullPath))
+            {
+                return new NotFoundFile(subpath, this);
+            }
+
+            var file = new FileInfo(fullPath);
+
+            return !IsExcluded(file)
+                ? new LocalFile(subpath, file, this)
                 : new NotFoundFile(subpath, this);
         }
 
         public override IDirectory GetDirectory(string subpath)
         {
             var fullPath = MapPathInternal(ref subpath, true, false);
-            return fullPath.HasValue()
+            if (string.IsNullOrEmpty(fullPath))
+            {
+                return new NotFoundDirectory(subpath, this);
+            }
+
+            var dir = new DirectoryInfo(fullPath);
+
+            return !IsExcluded(dir)
                 ? new LocalDirectory(subpath, new DirectoryInfo(fullPath), this)
                 : new NotFoundDirectory(subpath, this);
         }
@@ -123,6 +139,7 @@ namespace Smartstore.IO
         {
             if (string.IsNullOrEmpty(subpath))
             {
+                subpath ??= string.Empty;
                 return Root;
             }
 
@@ -175,8 +192,21 @@ namespace Smartstore.IO
             }
         }
 
-        //private static bool IsExcluded(FileSystemInfo fileSystemInfo, ExclusionFilters filters)
-        //    => filters != ExclusionFilters.None && (fileSystemInfo.Name.StartsWith(".", StringComparison.Ordinal) && (filters & ExclusionFilters.DotPrefixed) != ExclusionFilters.None || fileSystemInfo.Exists && ((fileSystemInfo.Attributes & FileAttributes.Hidden) != (FileAttributes)0 && (filters & ExclusionFilters.Hidden) != ExclusionFilters.None || (fileSystemInfo.Attributes & FileAttributes.System) != (FileAttributes)0 && (filters & ExclusionFilters.System) != ExclusionFilters.None));
+        internal static bool IsExcluded(FileSystemInfo info)
+        {
+            // Sync filtering behaviour with PhysicalFileProvider
+
+            if (info.Name.StartsWith(".", StringComparison.Ordinal))
+            {
+                return true;
+            }
+            else if (info.Exists && ((info.Attributes & FileAttributes.Hidden) != 0 || ((info.Attributes & FileAttributes.System) != 0)))
+            {
+                return true;
+            }
+
+            return false;
+        }
 
         //private bool IsUnderneathRoot(string fullPath)
         //{

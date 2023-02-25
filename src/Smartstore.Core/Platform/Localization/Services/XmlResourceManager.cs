@@ -123,14 +123,13 @@ namespace Smartstore.Core.Localization
                     if (mode.HasFlag(ImportModeFlags.Insert))
                     {
                         isDirty = true;
-                        _db.LocaleStringResources.Add(
-                            new LocaleStringResource
-                            {
-                                LanguageId = language.Id,
-                                ResourceName = name,
-                                ResourceValue = value,
-                                IsFromPlugin = sourceIsPlugin
-                            });
+                        _db.LocaleStringResources.Add(new LocaleStringResource
+                        {
+                            LanguageId = language.Id,
+                            ResourceName = name,
+                            ResourceValue = value,
+                            IsFromPlugin = sourceIsPlugin
+                        });
                     }
                 }
             }
@@ -368,7 +367,7 @@ namespace Smartstore.Core.Localization
             }
 
             // any other region with same language (de-*)
-            foreach (var fi in directory.EnumerateFiles("resources.{0}-*.xml".FormatInvariant(code)))
+            foreach (var fi in directory.EnumerateFiles($"resources.{code}-*.xml"))
             {
                 code = _rgFileName.Match(fi.Name).Groups[1].Value;
                 if (CultureHelper.IsValidCultureCode(code))

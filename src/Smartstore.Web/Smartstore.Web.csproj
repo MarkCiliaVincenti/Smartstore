@@ -2,6 +2,7 @@
 
 	<Import Project="..\Smartstore.Build\Smartstore.Common.props" />
 	<Import Project="..\Smartstore.Build\Smartstore.Razor.props" />
+    <Import Project="..\Smartstore.Build\Smartstore.Data.targets" />
 
 	<PropertyGroup>
 		<UserSecretsId>b35c0f56-dfa8-4120-b29b-a677578afcd1</UserSecretsId>
@@ -14,21 +15,20 @@
 		<PackageReference Include="Autofac.Extensions.DependencyInjection" Version="8.0.0" />
 		<PackageReference Include="Azure.Core" Version="1.26.0" />
 		<PackageReference Include="FluentValidation.AspNetCore" Version="11.2.2" />
-		<PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="7.0.0" />
-		<PackageReference Include="Microsoft.ClearScript.V8.Native.linux-x64" Version="7.3.5" />
-		<PackageReference Include="Microsoft.ClearScript.V8.Native.osx-x64" Version="7.3.5" />
-		<PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.3.5" />
-		<PackageReference Include="Microsoft.ClearScript.V8.Native.win-x86" Version="7.3.5" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="7.0.0">
+		<PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="7.0.2" />
+		<PackageReference Include="Microsoft.ClearScript.V8.Native.linux-x64" Version="7.3.6" />
+		<PackageReference Include="Microsoft.ClearScript.V8.Native.osx-x64" Version="7.3.6" />
+		<PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.3.6" />
+		<PackageReference Include="Microsoft.ClearScript.V8.Native.win-x86" Version="7.3.6" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="7.0.2">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="System.Runtime.Caching" Version="7.0.0" />
+        <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.4" />
 	</ItemGroup>
 
-	<ItemGroup>
-		<ProjectReference Include="..\Smartstore.Data\Smartstore.Data.MySql\Smartstore.Data.MySql.csproj" />
-		<ProjectReference Include="..\Smartstore.Data\Smartstore.Data.SqlServer\Smartstore.Data.SqlServer.csproj" />
+	<ItemGroup> 
 		<ProjectReference Include="..\Smartstore\Smartstore.csproj" />
 		<ProjectReference Include="..\Smartstore.Core\Smartstore.Core.csproj" />
 		<ProjectReference Include="..\Smartstore.Web.Common\Smartstore.Web.Common.csproj" />
@@ -44,6 +44,7 @@
 	<!-- Copy publishable files in App_Data directory -->
 	<ItemGroup>
 		<None Include="App_Data\icons.json" CopyToPublishDirectory="PreserveNewest" />
+        <None Include="App_Data\UAParser.regexes.yaml" CopyToPublishDirectory="PreserveNewest" />
 		<None Include="App_Data\widgetzones.json" CopyToPublishDirectory="PreserveNewest" />
 		<None Include="App_Data\EmailTemplates\**" CopyToPublishDirectory="PreserveNewest" />
 		<None Include="App_Data\Geo\**" CopyToPublishDirectory="PreserveNewest" />
@@ -59,14 +60,16 @@
 
 	<!-- Copy publishable files in Modules directory -->
 	<ItemGroup>
-		<None Include="Modules\**" Exclude="Modules\**\*.pdb; Modules\**\runtimes\**; Modules\**\refs\**" CopyToPublishDirectory="PreserveNewest" />
+        <None Include="Modules\**" Exclude="Modules\**\*.pdb; Modules\**\runtimes\**; Modules\**\refs\**" CopyToPublishDirectory="PreserveNewest">
+            <Visible>false</Visible>
+        </None>
 	</ItemGroup>
 
 	<!-- Copy publishable files in Themes directory -->
 	<ItemGroup>
-		<Content Include="Themes\**" Exclude="Themes\*\Views\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
-		<None Include="Themes\*\Views\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
-	</ItemGroup>
+        <Content CopyToPublishDirectory="PreserveNewest" Exclude="Themes\*\Views\**\*.cshtml" Include="Themes\Flex\**; Themes\FlexBlack\**; Themes\FlexBlue\**" />
+        <None CopyToPublishDirectory="PreserveNewest" Include="Themes\Flex\Views\**\*.cshtml; Themes\FlexBlack\Views\**\*.cshtml; Themes\FlexBlue\Views\**\*.cshtml" />	
+    </ItemGroup>
 
 	<!-- Copy publishable files in Views directory -->
 	<ItemGroup>
@@ -75,7 +78,6 @@
     
     <!-- Don't publish static/raw files -->
 	<ItemGroup>
-        <Content Remove="Views\Shared\Partials\Product.List.Item.Delivery.cshtml" />
         <Content Remove="wwwroot\lib\bi\bootstrap-icons-all.svg" CopyToPublishDirectory="Never" />
         <Content Remove="wwwroot\lib\fontastic\icomoon\**" CopyToPublishDirectory="Never" />
 	</ItemGroup>
@@ -92,13 +94,13 @@
 		</Content>
 	</ItemGroup>
 
-	<ItemGroup>
+    <ItemGroup>
 		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
 			<_Parameter1>Smartstore.Web.Tests</_Parameter1>
 		</AssemblyAttribute>
 	</ItemGroup>
 
-	<PropertyGroup>
+    <PropertyGroup>
 		<!--Set this parameter to true to get the dlls copied from the NuGet cache to the output of your project-->
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		<AspNetCoreHostingModel>InProcess</AspNetCoreHostingModel>

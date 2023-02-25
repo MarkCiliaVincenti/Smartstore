@@ -4,11 +4,8 @@ using System.Collections.Generic;
 using System.Data.Common;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -49,7 +46,7 @@ namespace Smartstore.Data.SqlServer
         {
         }
 
-        private string ReIndexTablesSql(string database)
+        private static string ReIndexTablesSql(string database)
             => $@"DECLARE @TableName sysname 
                   DECLARE cur_reindex CURSOR FOR
                   SELECT table_name
@@ -65,7 +62,7 @@ namespace Smartstore.Data.SqlServer
                   CLOSE cur_reindex
                   DEALLOCATE cur_reindex";
 
-        private string RestoreDatabaseSql(string database)
+        private static string RestoreDatabaseSql(string database)
             => $@"DECLARE @ErrorMessage NVARCHAR(4000)
                  ALTER DATABASE [{database}] SET OFFLINE WITH ROLLBACK IMMEDIATE
                  BEGIN TRY
@@ -82,17 +79,27 @@ namespace Smartstore.Data.SqlServer
 
         public override DbSystemType ProviderType => DbSystemType.SqlServer;
 
+        public override string ProviderFriendlyName
+        {
+            get => Database.ExecuteScalarRaw<string>("SELECT @@VERSION AS version_info");
+        }
+
         public override DataProviderFeatures Features
             => DataProviderFeatures.Backup
-            | DataProviderFeatures.ComputeSize
-            | DataProviderFeatures.ReIndex
-            | DataProviderFeatures.ExecuteSqlScript
             | DataProviderFeatures.Restore
-            | DataProviderFeatures.AccessIncrement
             | DataProviderFeatures.Shrink
+            | DataProviderFeatures.ReIndex
+            | DataProviderFeatures.ComputeSize
+            | DataProviderFeatures.AccessIncrement
             | DataProviderFeatures.StreamBlob
-            | DataProviderFeatures.ReadSequential
-            | DataProviderFeatures.StoredProcedures;
+            | DataProviderFeatures.ExecuteSqlScript
+            | DataProviderFeatures.StoredProcedures
+            | DataProviderFeatures.ReadSequential;
+
+        public override DbParameter CreateParameter()
+        {
+            return new SqlParameter();
+        }
 
         public override bool MARSEnabled
         {
@@ -116,101 +123,158 @@ namespace Smartstore.Data.SqlServer
 
         public override string ApplyPaging(string sql, int skip, int take)
         {
-            Guard.NotNegative(skip, nameof(skip));
-            Guard.NotNegative(take, nameof(take));
+            Guard.NotNegative(skip);
+            Guard.NotNegative(take);
 
             return $@"{sql}
 OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY";
         }
 
-        public override string[] GetTableNames()
+        protected override ValueTask<bool> HasDatabaseCore(string databaseName, bool async)
         {
-            return Database.ExecuteQueryRaw<string>(
-                $"SELECT table_name From INFORMATION_SCHEMA.TABLES WHERE table_type = 'BASE TABLE' and table_catalog = '{Database.GetDbConnection().Database}'").ToArray();
+            FormattableString sql = $"SELECT database_id FROM sys.databases WHERE name = {databaseName}";
+            return async 
+                ? Database.ExecuteQueryInterpolatedAsync<string>(sql).AnyAsync() 
+                : ValueTask.FromResult(Database.ExecuteQueryInterpolated<string>(sql).Any());
         }
 
-        public override async Task<string[]> GetTableNamesAsync()
+        protected override ValueTask<bool> HasTableCore(string tableName, bool async)
         {
-            return await Database.ExecuteQueryRawAsync<string>(
-                $"SELECT table_name From INFORMATION_SCHEMA.TABLES WHERE table_type = 'BASE TABLE' and table_catalog = '{Database.GetDbConnection().Database}'").AsyncToArray();
+            var sql = $@"SELECT table_name FROM INFORMATION_SCHEMA.TABLES WHERE table_type = 'BASE TABLE' AND table_catalog = '{DatabaseName}' AND table_name = '{tableName}'";
+            return async
+                ? Database.ExecuteQueryRawAsync<string>(sql).AnyAsync()
+                : ValueTask.FromResult(Database.ExecuteQueryRaw<string>(sql).Any());
         }
 
-        public override int ShrinkDatabase()
+        protected override ValueTask<bool> HasColumnCore(string tableName, string columnName, bool async)
         {
-            return Database.ExecuteSqlRaw("DBCC SHRINKDATABASE(0)");
+            FormattableString sql = $"SELECT column_name From INFORMATION_SCHEMA.COLUMNS WHERE table_catalog = {DatabaseName} AND table_name = {tableName} And column_name = {columnName}";
+            return async
+                ? Database.ExecuteQueryInterpolatedAsync<string>(sql).AnyAsync()
+                : ValueTask.FromResult(Database.ExecuteQueryInterpolated<string>(sql).Any());
         }
 
-        public override Task<int> ShrinkDatabaseAsync(CancellationToken cancelToken = default)
+        protected override ValueTask<string[]> GetTableNamesCore(bool async)
         {
-            return Database.ExecuteSqlRawAsync("DBCC SHRINKDATABASE(0)", cancelToken);
+            var sql = $"SELECT table_name From INFORMATION_SCHEMA.TABLES WHERE table_type = 'BASE TABLE' and table_catalog = '{DatabaseName}'";
+            return async
+                ? Database.ExecuteQueryRawAsync<string>(sql).AsyncToArray()
+                : ValueTask.FromResult(Database.ExecuteQueryRaw<string>(sql).ToArray());
         }
 
-        public override decimal GetDatabaseSize()
+        protected override Task<int> TruncateTableCore(string tableName, bool async)
         {
-            return Database.ExecuteScalarRaw<decimal>("SELECT SUM(size) / 128.0 FROM sysfiles");
+            var sql = $"TRUNCATE TABLE [{tableName}]";
+            return async
+                ? Database.ExecuteSqlRawAsync(sql)
+                : Task.FromResult(Database.ExecuteSqlRaw(sql));
+        }
+        
+        protected override async Task<int> InsertIntoCore(string sql, bool async, params object[] parameters)
+        {
+            sql += "; SELECT @@IDENTITY;";
+            return async
+                ? (await Database.ExecuteQueryRawAsync<decimal>(sql, parameters).FirstOrDefaultAsync()).Convert<int>()
+                : Database.ExecuteQueryRaw<decimal>(sql, parameters).FirstOrDefault().Convert<int>();
         }
 
-        public override Task<decimal> GetDatabaseSizeAsync()
+        public override bool IsTransientException(Exception ex)
         {
-            return Database.ExecuteScalarRawAsync<decimal>("SELECT SUM(size) / 128.0 FROM sysfiles");
+            return DetectSqlError(ex, _transientErrorCodes);
         }
 
-        public override async Task<int> InsertIntoAsync(string sql, params object[] parameters)
+        public override bool IsUniquenessViolationException(DbUpdateException updateException)
         {
-            // TODO: (core) Test InsertIntoAsync with SqlServer & MySql
-            Guard.NotEmpty(sql, nameof(sql));
-            return (await Database.ExecuteQueryRawAsync<decimal>(
-                sql + "; SELECT @@IDENTITY;", parameters).FirstOrDefaultAsync()).Convert<int>();
+            return DetectSqlError(updateException?.InnerException, _uniquenessViolationErrorCodes);
+        }
+        
+        protected override async Task<long> GetDatabaseSizeCore(bool async)
+        {
+            var sql = "SELECT SUM(size * 8192) FROM sys.database_files";
+            return async
+                ? (await Database.ExecuteScalarRawAsync<int>(sql)).Convert<long>()
+                : Database.ExecuteScalarRaw<int>(sql).Convert<long>();
         }
 
-        protected override int? GetTableIncrementCore(string tableName)
+        protected override Task<int> ShrinkDatabaseCore(bool async, CancellationToken cancelToken = default)
         {
-            Guard.NotEmpty(tableName, nameof(tableName));
-            return Database.ExecuteScalarRaw<decimal?>(
-                $"SELECT IDENT_CURRENT('[{tableName}]')").Convert<int?>();
+            var sql = "DBCC SHRINKDATABASE(0)";
+            return async
+                ? Database.ExecuteSqlRawAsync(sql, cancelToken)
+                : Task.FromResult(Database.ExecuteSqlRaw(sql));
         }
 
-        protected override async Task<int?> GetTableIncrementCoreAsync(string tableName)
+        protected override Task<int> ReIndexTablesCore(bool async, CancellationToken cancelToken = default)
         {
-            Guard.NotEmpty(tableName, nameof(tableName));
-            return (await Database.ExecuteScalarRawAsync<decimal?>(
-                $"SELECT IDENT_CURRENT('[{tableName}]')")).Convert<int?>();
+            var sql = ReIndexTablesSql(DatabaseName);
+            return async
+                ? Database.ExecuteSqlRawAsync(sql, cancelToken)
+                : Task.FromResult(Database.ExecuteSqlRaw(sql));
         }
 
-        protected override void SetTableIncrementCore(string tableName, int ident)
+        protected override async Task<int?> GetTableIncrementCore(string tableName, bool async)
         {
-            Guard.NotEmpty(tableName, nameof(tableName));
-            Database.ExecuteSqlRaw(
-                $"DBCC CHECKIDENT([{tableName}], RESEED, {ident})");
+            var sql = $"SELECT IDENT_CURRENT('[{tableName}]')";
+            return async
+               ? (await Database.ExecuteScalarRawAsync<decimal?>(sql)).Convert<int?>()
+               : Database.ExecuteScalarRaw<decimal?>(sql).Convert<int?>();
         }
 
-        protected override Task SetTableIncrementCoreAsync(string tableName, int ident)
+        protected override Task SetTableIncrementCore(string tableName, int ident, bool async)
         {
-            Guard.NotEmpty(tableName, nameof(tableName));
-            return Database.ExecuteSqlRawAsync(
-                $"DBCC CHECKIDENT([{tableName}], RESEED, {ident})");
+            var sql = $"DBCC CHECKIDENT([{tableName}], RESEED, {ident})";
+            return async
+               ? Database.ExecuteSqlRawAsync(sql)
+               : Task.FromResult(Database.ExecuteSqlRaw(sql));
         }
 
-        public override int ReIndexTables()
+        protected override Task<int> BackupDatabaseCore(string fullPath, bool async, CancellationToken cancelToken = default)
         {
-            return Database.ExecuteSqlRaw(ReIndexTablesSql(Database.GetDbConnection().Database));
+            return async 
+                ? Database.ExecuteSqlRawAsync(CreateBackupSql(), new object[] { fullPath }, cancelToken)
+                : Task.FromResult(Database.ExecuteSqlRaw(CreateBackupSql(), new object[] { fullPath }));
         }
 
-        public override Task<int> ReIndexTablesAsync(CancellationToken cancelToken = default)
+        protected override Task<int> RestoreDatabaseCore(string backupFullPath, bool async, CancellationToken cancelToken = default)
         {
-            return Database.ExecuteSqlRawAsync(ReIndexTablesSql(Database.GetDbConnection().Database), cancelToken);
+            return async
+                ? Database.ExecuteSqlRawAsync(RestoreDatabaseSql(DatabaseName), new object[] { backupFullPath }, cancelToken)
+                : Task.FromResult(Database.ExecuteSqlRaw(RestoreDatabaseSql(DatabaseName), new object[] { backupFullPath }));
         }
 
-        public override int BackupDatabase(string fullPath)
+        protected override IList<string> SplitSqlScript(string sqlScript)
         {
-            Guard.NotEmpty(fullPath, nameof(fullPath));
-            return Database.ExecuteSqlRaw(CreateBackupSql(), new object[] { fullPath });
+            var commands = new List<string>();
+            var lines = sqlScript.GetLines(true);
+            var command = string.Empty;
+
+            foreach (var line in lines)
+            {
+                // Ignore comments
+                if (line.StartsWith("--") || line.StartsWith("/*"))
+                {
+                    continue;
+                }
+
+                var isDelimiter = line.EqualsNoCase("GO");
+
+                if (!isDelimiter)
+                {
+                    command += line + Environment.NewLine;
+                }
+                else
+                {
+                    commands.Add(command);
+                    command = string.Empty;
+                }
+            }
+
+            return commands;
         }
 
-        public override async Task<int> BackupDatabaseAsync(string fullPath, CancellationToken cancelToken = default)
+        protected override Stream OpenBlobStreamCore(string tableName, string blobColumnName, string pkColumnName, object pkColumnValue)
         {
-            Guard.NotEmpty(fullPath, nameof(fullPath));
-            return await Database.ExecuteSqlRawAsync(CreateBackupSql(), new object[] { fullPath }, cancelToken);
+            return new SqlBlobStream(this, tableName, blobColumnName, pkColumnName, pkColumnValue);
         }
 
         private long GetSqlServerEdition()
@@ -233,7 +297,7 @@ OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY";
 
         private string CreateBackupSql()
         {
-            var sql = "BACKUP DATABASE [" + Database.GetDbConnection().Database + "] TO DISK = {0} WITH FORMAT";
+            var sql = "BACKUP DATABASE [" + DatabaseName + "] TO DISK = {0} WITH FORMAT";
 
             // Backup compression is not supported by "Express" or "Express with Advanced Services" edition.
             // https://expressdb.io/sql-server-express-feature-comparison.html
@@ -242,83 +306,8 @@ OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY";
             {
                 sql += ", COMPRESSION";
             }
-
+           
             return sql;
-        }
-
-        public override int RestoreDatabase(string backupFullPath)
-        {
-            Guard.NotEmpty(backupFullPath, nameof(backupFullPath));
-
-            return Database.ExecuteSqlRaw(
-                RestoreDatabaseSql(Database.GetDbConnection().Database),
-                backupFullPath);
-        }
-
-        public override Task<int> RestoreDatabaseAsync(string backupFullPath, CancellationToken cancelToken = default)
-        {
-            Guard.NotEmpty(backupFullPath, nameof(backupFullPath));
-
-            return Database.ExecuteSqlRawAsync(
-                RestoreDatabaseSql(Database.GetDbConnection().Database),
-                new object[] { backupFullPath },
-                cancelToken);
-        }
-
-        protected override IList<string> TokenizeSqlScript(string sqlScript)
-        {
-            Guard.NotEmpty(sqlScript, nameof(sqlScript));
-
-            var commands = new List<string>();
-
-            sqlScript = Regex.Replace(sqlScript, @"\\\r?\n", string.Empty);
-            var batches = Regex.Split(sqlScript, @"^\s*(GO[ \t]+[0-9]+|GO)(?:\s+|$)", RegexOptions.IgnoreCase | RegexOptions.Multiline);
-
-            for (var i = 0; i < batches.Length; i++)
-            {
-                if (string.IsNullOrWhiteSpace(batches[i]) || batches[i].StartsWith("GO", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                var count = 1;
-                if (i != batches.Length - 1 && batches[i + 1].StartsWith("GO", StringComparison.OrdinalIgnoreCase))
-                {
-                    var match = Regex.Match(batches[i + 1], "([0-9]+)");
-                    if (match.Success)
-                        count = int.Parse(match.Value);
-                }
-
-                var builder = new StringBuilder();
-                for (var j = 0; j < count; j++)
-                {
-                    builder.Append(batches[i]);
-                    if (i == batches.Length - 1)
-                        builder.AppendLine();
-                }
-
-                commands.Add(builder.ToString());
-            }
-
-            return commands;
-        }
-
-        public override Stream OpenBlobStream(string tableName, string blobColumnName, string pkColumnName, object pkColumnValue)
-        {
-            return new SqlBlobStream(Database, tableName, blobColumnName, pkColumnName, pkColumnValue);
-        }
-
-        public override bool IsTransientException(Exception ex)
-        {
-            return DetectSqlError(ex, _transientErrorCodes);
-        }
-
-        public override bool IsUniquenessViolationException(DbUpdateException updateException)
-        {
-            return DetectSqlError(updateException?.InnerException, _uniquenessViolationErrorCodes);
-        }
-
-        public override DbParameter CreateParameter()
-        {
-            return new SqlParameter();
         }
 
         private static bool DetectSqlError(Exception ex, ICollection<int> errorCodes)

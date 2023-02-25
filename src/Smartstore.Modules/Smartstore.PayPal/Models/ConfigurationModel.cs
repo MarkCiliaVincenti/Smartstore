@@ -12,6 +12,7 @@ namespace Smartstore.PayPal.Models
         public bool PaymentsReceivable { get; set; } = false;
         public bool PrimaryEmailConfirmed { get; set; } = false;
         public bool WebHookCreated { get; set; } = false;
+        public bool DisplayOnboarding { get; set; }
 
         [LocalizedDisplay("*UseSandbox")]
         public bool UseSandbox { get; set; }
@@ -62,11 +63,17 @@ namespace Smartstore.PayPal.Models
         [LocalizedDisplay("*ShowButtonInMiniShoppingCart")]
         public bool ShowButtonInMiniShoppingCart { get; set; }
 
+        [LocalizedDisplay("*ShowButtonOnCartPage")]
+        public bool ShowButtonOnCartPage { get; set; } = true;
+
         [LocalizedDisplay("*FundingsOffCanvasCart")]
         public string[] FundingsOffCanvasCart { get; set; }
 
         [LocalizedDisplay("*FundingsCart")]
         public string[] FundingsCart { get; set; }
+
+        [LocalizedDisplay("*PayUponInvoiceLimit")]
+        public decimal PayUponInvoiceLimit { get; set; }
     }
 
     [LocalizedDisplay("Plugins.Smartstore.PayPal.")]

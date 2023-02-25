@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using FluentValidation;
+using Microsoft.AspNetCore.Http;
 using Smartstore.Core.Checkout.Orders;
 using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Data;
@@ -19,12 +20,14 @@ namespace Smartstore.PayPal.Providers
         private readonly SmartDbContext _db;
         private readonly ICheckoutStateAccessor _checkoutStateAccessor;
         private readonly PayPalHttpClient _client;
-
-        public PayPalInvoiceProvider(SmartDbContext db, ICheckoutStateAccessor checkoutStateAccessor, PayPalHttpClient client)
+        private readonly IValidator<PublicInvoiceModel> _validator;
+        
+        public PayPalInvoiceProvider(SmartDbContext db, ICheckoutStateAccessor checkoutStateAccessor, PayPalHttpClient client, IValidator<PublicInvoiceModel> validator)
         {
             _db = db;
             _client = client;
             _checkoutStateAccessor = checkoutStateAccessor;
+            _validator = validator;
         }
 
         public RouteInfo GetConfigurationRoute()
@@ -53,6 +56,41 @@ namespace Smartstore.PayPal.Providers
         public override Widget GetPaymentInfoWidget()
             => new ComponentWidget(typeof(PayPalInvoiceViewComponent));
 
+        public override async Task<PaymentValidationResult> ValidatePaymentDataAsync(IFormCollection form)
+        {
+            var model = new PublicInvoiceModel
+            {
+                DateOfBirthDay = form["DateOfBirthDay"].ToString().HasValue() ? Convert.ToInt32(form["DateOfBirthDay"]) : 0,
+                DateOfBirthMonth = form["DateOfBirthMonth"].ToString().HasValue() ? Convert.ToInt32(form["DateOfBirthMonth"]) : 0,
+                DateOfBirthYear = form["DateOfBirthYear"].ToString().HasValue() ? Convert.ToInt32(form["DateOfBirthYear"]) : 0,
+                PhoneNumber = form["PhoneNumber"]
+            };
+
+            var result = await _validator.ValidateAsync(model);
+
+            if (result.Errors.Count > 0)
+            {
+                if(!result.Errors.Any(x => x.PropertyName == nameof(PublicInvoiceModel.PhoneNumber)))
+                {
+                    _checkoutStateAccessor.CheckoutState.PaymentData["PayPalInvoicePhoneNumber"] = form["PhoneNumber"].ToString();
+                }
+
+                if (!result.Errors.Any(x => x.PropertyName == nameof(PublicInvoiceModel.DateOfBirthDay)) 
+                    && !result.Errors.Any(x => x.PropertyName == nameof(PublicInvoiceModel.DateOfBirthMonth))
+                    && !result.Errors.Any(x => x.PropertyName == nameof(PublicInvoiceModel.DateOfBirthYear)))
+                {
+                    var birthdate = new DateTime(
+                        Convert.ToInt32(form["DateOfBirthYear"]),
+                        Convert.ToInt32(form["DateOfBirthMonth"]),
+                        Convert.ToInt32(form["DateOfBirthDay"]));
+
+                    _checkoutStateAccessor.CheckoutState.PaymentData["PayPalInvoiceBirthdate"] = birthdate.ToString("yyyy-MM-dd");
+                }
+            }
+
+            return new PaymentValidationResult(result);
+        }
+
         public override Task<ProcessPaymentRequest> GetPaymentInfoAsync(IFormCollection form)
         {
             var birthdate = new DateTime(
@@ -73,6 +111,11 @@ namespace Smartstore.PayPal.Providers
 
         public override async Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest request)
         {
+            if (!_checkoutStateAccessor.CheckoutState.PaymentData.TryGetValueAs<string>("ClientMetaId", out var clientMetaId))
+            {
+                throw new PayPalException(T("Payment.MissingCheckoutState", "PayPalCheckoutState." + nameof(clientMetaId)));
+            }
+
             var result = new ProcessPaymentResult
             {
                 NewPaymentStatus = PaymentStatus.Pending,

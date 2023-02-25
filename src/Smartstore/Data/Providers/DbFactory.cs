@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,7 @@ namespace Smartstore.Data.Providers
     public abstract class DbFactory
     {
         private readonly static ConcurrentDictionary<string, DbFactory> _loadedFactories = new(StringComparer.OrdinalIgnoreCase);
+        private UnifiedModelBuilderFacade _modelBuilderFacade;
 
         /// <summary>
         /// Gets the database system type.
@@ -73,6 +75,38 @@ namespace Smartstore.Data.Providers
         public abstract DbContextOptionsBuilder ConfigureDbContext(DbContextOptionsBuilder builder, string connectionString);
 
         /// <summary>
+        /// Sets provider-specific defaults and configures conventions before they run. This method is invoked before <see cref="DbContext.OnModelCreating(ModelBuilder)" />.
+        /// See <see href="https://aka.ms/efcore-docs-pre-convention">Pre-convention model building in EF Core</see> for more information and examples.
+        /// </summary>
+        public virtual void ConfigureModelConventions(ModelConfigurationBuilder configurationBuilder)
+        {
+            // Noop by default
+        }
+
+        /// <summary>
+        /// Provider-specific model creation stuff.
+        /// </summary>
+        public virtual void CreateModel(ModelBuilder modelBuilder)
+        {
+            // Noop by default
+        }
+        
+        public UnifiedModelBuilderFacade ModelBuilderFacade
+        {
+            get => _modelBuilderFacade ??= CreateModelBuilderFacade();
+        }
+
+        protected virtual UnifiedModelBuilderFacade CreateModelBuilderFacade()
+        {
+            return new UnifiedModelBuilderFacade();
+        }
+
+        public static string[] GetSupportedProviders()
+        {
+            return new[] { "Smartstore.Data.SqlServer", "Smartstore.Data.MySql", "Smartstore.Data.PostgreSql", "Smartstore.Data.Sqlite" };
+        }
+
+        /// <summary>
         /// Finds the <see cref="DbFactory"/> impl type for the given <paramref name="provider"/> name
         /// and loads its assembly into the current <see cref="AssemblyLoadContext"/>.
         /// </summary>
@@ -89,14 +123,17 @@ namespace Smartstore.Data.Providers
                 switch (provider.ToLowerInvariant())
                 {
                     case "sqlserver":
-                        assemblyName = "Smartstore.Data.SqlServer.dll";
+                        assemblyName = "Smartstore.Data.SqlServer";
                         break;
                     case "mysql":
-                        assemblyName = "Smartstore.Data.MySql.dll";
+                        assemblyName = "Smartstore.Data.MySql";
                         break;
-                        //case "sqlite":
-                        //    assemblyName = "Smartstore.Data.Sqlite.dll";
-                        //    break;
+                    case "postgresql":
+                        assemblyName = "Smartstore.Data.PostgreSql";
+                        break;
+                    case "sqlite":
+                        assemblyName = "Smartstore.Data.Sqlite";
+                        break;
                 }
 
                 if (assemblyName.IsEmpty())
@@ -104,9 +141,8 @@ namespace Smartstore.Data.Providers
                     throw new NotSupportedException($"Unknown database provider type name '${provider}'.");
                 }
 
-                var binPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                var assemblyPath = Path.Combine(binPath, assemblyName);
-                var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
+                var path = Path.Combine(AppContext.BaseDirectory, $"{assemblyName}.dll");
+                var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
 
                 var dbFactoryType = typeScanner.FindTypes<DbFactory>(new[] { assembly }).FirstOrDefault();
                 if (dbFactoryType == null)

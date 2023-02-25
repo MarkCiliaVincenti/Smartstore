@@ -1,6 +1,4 @@
-﻿using System.Reflection;
-using System.Runtime.Loader;
-using Smartstore.Data.Providers;
+﻿using Smartstore.Data.Providers;
 using Smartstore.Engine;
 using Smartstore.IO;
 using Smartstore.Threading;
@@ -12,7 +10,8 @@ namespace Smartstore.Data
         Unknown,
         SqlServer,
         MySql,
-        Sqlite
+        PostgreSql,
+        SQLite
     }
 
     public partial class DataSettings

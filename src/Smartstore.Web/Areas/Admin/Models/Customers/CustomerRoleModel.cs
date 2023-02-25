@@ -2,6 +2,7 @@
 using FluentValidation;
 using Smartstore.Core.Localization;
 using Smartstore.Core.Rules;
+using Smartstore.Web.Models.Customers;
 
 namespace Smartstore.Admin.Models.Customers
 {
@@ -42,6 +43,8 @@ namespace Smartstore.Admin.Models.Customers
         public int[] SelectedRuleSetIds { get; set; }
 
         public string EditUrl { get; set; }
+
+        public CustomerSearchModel CustomerSearch { get; set; } = new();
     }
 
     public partial class CustomerRoleValidator : AbstractValidator<CustomerRoleModel>

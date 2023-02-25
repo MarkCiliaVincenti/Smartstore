@@ -20,7 +20,7 @@ namespace Smartstore.Caching
         private readonly IOptions<MemoryCacheOptions> _optionsAccessor;
         private readonly ILoggerFactory _loggerFactory;
         private readonly IMessageBus _bus;
-        private readonly ICollection<string> _keys = new SyncedCollection<string>(new HashSet<string>()) { ReadLockFree = true };
+        private readonly ICollection<string> _keys = new SyncedCollection<string>(new HashSet<string>());
 
         private MemoryCache _cache;
 
@@ -109,12 +109,7 @@ namespace Smartstore.Caching
             {
                 _keys.Add(key);
 
-                var memSet = new MemorySet(this);
-                var items = acquirer?.Invoke();
-                if (items != null)
-                {
-                    memSet.AddRange(items);
-                }
+                var memSet = new MemorySet(this, acquirer?.Invoke());
 
                 return new CacheEntry { Key = key, Value = memSet, ValueType = typeof(MemorySet) };
             });
@@ -128,15 +123,7 @@ namespace Smartstore.Caching
             {
                 _keys.Add(key);
 
-                var memSet = new MemorySet(this);
-                if (acquirer != null)
-                {
-                    var items = await acquirer.Invoke();
-                    if (items != null)
-                    {
-                        memSet.AddRange(items);
-                    }
-                }
+                var memSet = new MemorySet(this, acquirer == null ? null : await acquirer?.Invoke());
 
                 return new CacheEntry { Key = key, Value = memSet, ValueType = typeof(MemorySet) };
             });

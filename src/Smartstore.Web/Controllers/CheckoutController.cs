@@ -60,13 +60,9 @@ namespace Smartstore.Web.Controllers
 
         private async Task<bool> ValidatePaymentDataAsync(IPaymentMethod paymentMethod, IFormCollection form)
         {
-            var warnings = await paymentMethod.GetPaymentDataWarningsAsync();
+            var validationResult = await paymentMethod.ValidatePaymentDataAsync(form);
 
-            if (warnings != null)
-            {
-                warnings.Each(x => ModelState.AddModelError(string.Empty, x));
-            }
-
+            validationResult.AddToModelState(ModelState);
             if (!ModelState.IsValid)
             {
                 return false;
@@ -523,17 +519,17 @@ namespace Smartstore.Web.Controllers
             customer.GenericAttributes.SelectedPaymentMethod = paymentMethod;
             await customer.GenericAttributes.SaveChangesAsync();
 
-            // Validate info
-            if (!await ValidatePaymentDataAsync(paymentMethodProvider.Value, form))
-            {
-                return RedirectToAction(nameof(PaymentMethod));
-            }
-
             // Save payment data so that the user must not re-enter it.
             var state = _checkoutStateAccessor.CheckoutState;
             foreach (var kvp in form)
             {
                 state.PaymentData[kvp.Key] = kvp.Value.ToString();
+            }
+
+            // Validate info
+            if (!await ValidatePaymentDataAsync(paymentMethodProvider.Value, form))
+            {
+                return await PaymentMethod();
             }
 
             return RedirectToAction(nameof(Confirm));
@@ -650,19 +646,19 @@ namespace Smartstore.Web.Controllers
                 processPaymentRequest.StoreId = store.Id;
                 processPaymentRequest.CustomerId = customer.Id;
                 processPaymentRequest.PaymentMethodSystemName = customer.GenericAttributes.SelectedPaymentMethod;
-
+                
                 var placeOrderExtraData = new Dictionary<string, string>
                 {
-                    ["CustomerComment"] = HttpContext.Request.Form["customercommenthidden"].ToString(),
-                    ["SubscribeToNewsletter"] = HttpContext.Request.Form["SubscribeToNewsletter"].ToString(),
-                    ["AcceptThirdPartyEmailHandOver"] = HttpContext.Request.Form["AcceptThirdPartyEmailHandOver"].ToString()
+                    ["CustomerComment"] = Request.Form["customercommenthidden"].ToString(),
+                    ["SubscribeToNewsletter"] = Request.Form["SubscribeToNewsletter"].ToString(),
+                    ["AcceptThirdPartyEmailHandOver"] = Request.Form["AcceptThirdPartyEmailHandOver"].ToString()
                 };
 
                 placeOrderResult = await _orderProcessingService.PlaceOrderAsync(processPaymentRequest, placeOrderExtraData);
 
                 if (!placeOrderResult.Success)
                 {
-                    model.Warnings.AddRange(placeOrderResult.Errors.Select(x => HtmlUtility.ConvertPlainTextToHtml(x)));
+                    model.Warnings.AddRange(placeOrderResult.Errors.Select(HtmlUtility.ConvertPlainTextToHtml));
                 }
             }
             catch (Exception ex)
@@ -678,12 +674,22 @@ namespace Smartstore.Web.Controllers
             if (placeOrderResult == null || !placeOrderResult.Success || model.Warnings.Any())
             {
                 var paymentMethod = await _paymentService.LoadPaymentMethodBySystemNameAsync(customer.GenericAttributes.SelectedPaymentMethod);
-                if (paymentMethod != null && paymentMethod.Value.PaymentMethodType == PaymentMethodType.Button)
+                if (paymentMethod != null && 
+                    (paymentMethod.Value.PaymentMethodType == PaymentMethodType.Button || paymentMethod.Value.PaymentMethodType == PaymentMethodType.StandardAndButton))
                 {
                     model.Warnings.Take(3).Each(x => NotifyError(x));
 
-                    // Redirect back to where the payment button is.
-                    return RedirectToAction(nameof(ShoppingCartController.Cart), "ShoppingCart");
+                    if (paymentMethod.Value.PaymentMethodType == PaymentMethodType.Button)
+                    {
+                        // Redirect back to where the payment button is.
+                        return RedirectToAction(nameof(ShoppingCartController.Cart), "ShoppingCart");
+                    }
+
+                    if (paymentMethod.Value.PaymentMethodType == PaymentMethodType.StandardAndButton)
+                    {
+                        // Redirect back to payment selection page.
+                        return RedirectToAction(nameof(PaymentMethod));
+                    }
                 }
 
                 return View(model);

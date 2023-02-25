@@ -231,10 +231,15 @@
 
     // on document ready
     // TODO: reorganize > public.globalinit.js
+
+    let hasAOS = typeof AOS !== 'undefined';
+
     $(function () {
         // Init reveal on scroll with AOS library
-        if (typeof AOS !== 'undefined' && !$('body').hasClass('no-reveal')) {
-            AOS.init({ once: true, duration: 1000, startEvent: 'load' });
+        if (hasAOS
+            && !$('body').hasClass('no-reveal')
+            && !$('body').attr("data-aos-duration")) {
+            AOS.init({ once: true, duration: 1000 });
         }
 
         if (Smartstore.parallax !== undefined && !$('body').hasClass('no-parallax')) {
@@ -246,6 +251,10 @@
 
         applyCommonPlugins($("body"));
     });
+
+    if (hasAOS) {
+        window.addEventListener('load', AOS.refresh);
+    }
 
 })(jQuery, this, document);
 

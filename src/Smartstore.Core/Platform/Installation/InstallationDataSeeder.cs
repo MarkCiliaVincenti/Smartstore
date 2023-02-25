@@ -128,7 +128,7 @@ namespace Smartstore.Core.Installation
                 await PopulateAsync("PopulateProductVariantAttributes", _data.ProductVariantAttributes());
                 await PopulateAsync("ProductVariantAttributeCombinations", _data.ProductVariantAttributeCombinations());
                 await PopulateAsync("PopulateProductTags", _data.ProductTags());
-                Populate("FinalizeSamples", () => _data.FinalizeSamples());
+                Populate("FinalizeSamples", _data.FinalizeSamples);
             }
 
             // Perf
@@ -332,6 +332,11 @@ namespace Smartstore.Core.Installation
 
             // Built-in user for the PDF converter
             customer = _data.PdfConverterUser();
+            customer.CustomerRoleMappings.Add(new CustomerRoleMapping { CustomerId = customer.Id, CustomerRoleId = guestRole.Id });
+            await SaveAsync(customer);
+
+            // Built-in user for the webhook client
+            customer = _data.WebhookClientUser();
             customer.CustomerRoleMappings.Add(new CustomerRoleMapping { CustomerId = customer.Id, CustomerRoleId = guestRole.Id });
             await SaveAsync(customer);
         }

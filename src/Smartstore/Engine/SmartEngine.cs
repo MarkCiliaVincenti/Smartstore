@@ -17,7 +17,7 @@ namespace Smartstore.Engine
         const string SmartstoreNamespace = "Smartstore";
 
         private bool _isStarted;
-        private ModuleReferenceResolver _moduleReferenceResolver;
+        private IModuleReferenceResolver[] _referenceResolvers;
 
         public IApplicationContext Application { get; private set; }
         public ScopedServiceContainer Scope { get; set; }
@@ -47,7 +47,11 @@ namespace Smartstore.Engine
             ApplicationInitializerMiddleware.Initialized += (s, e) => IsInitialized = true;
 
             // Assembly resolver event.
-            _moduleReferenceResolver = new ModuleReferenceResolver(application);
+            _referenceResolvers = new IModuleReferenceResolver[]
+            {
+                new ModuleReferenceResolver(application),
+                new AppBaseReferenceResolver()
+            };
             AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
 
             return new EngineStarter(this);
@@ -55,26 +59,22 @@ namespace Smartstore.Engine
 
         private Assembly OnAssemblyResolve(object sender, ResolveEventArgs args)
         {
-            var assembly = _moduleReferenceResolver.ResolveAssembly(args.RequestingAssembly, args.Name, out var module);
-
-            if (assembly == null)
+            if (Application.ModuleCatalog == null)
             {
-                // Check for assembly already loaded
-                assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.FullName == args.Name);
+                // Too early: don't try to resolve assemblies before the module catalog is built.
+                return null;
+            }
 
-                if (assembly == null)
+            foreach (var resolver in _referenceResolvers)
+            {
+                var assembly = resolver.ResolveAssembly(args.RequestingAssembly, args.Name);
+                if (assembly != null)
                 {
-                    // Get assembly from TypeScanner
-                    assembly = Application.TypeScanner?.Assemblies?.FirstOrDefault(a => a.FullName == args.Name);
+                    return assembly;
                 }
             }
 
-            if (assembly != null && module != null)
-            {
-                module.Module?.AddPrivateReference(assembly);
-            }
-
-            return assembly;
+            return null;
         }
 
         class EngineStarter : EngineStarter<SmartEngine>
@@ -90,13 +90,12 @@ namespace Smartstore.Engine
                 var nsPrefix = SmartstoreNamespace + '.';
 
                 var libs = DependencyContext.Default.CompileLibraries
-                    .Where(x => x.Name == SmartstoreNamespace || x.Name.StartsWith(nsPrefix))
+                    .Where(x => IsCoreDependency(x.Name))
                     .Select(x => new CoreAssembly
                     {
-                        Name = x.Name,
+                        Name = new AssemblyName(x.Name),
                         DependsOn = x.Dependencies
-                            .Where(y => y.Name.StartsWith(nsPrefix))
-                            .Where(y => !y.Name.StartsWith(nsPrefix + "Data.")) // Exclude data provider projects
+                            .Where(y => IsCoreDependency(y.Name))
                             .Select(y => y.Name)
                             .ToArray()
                     })
@@ -105,14 +104,30 @@ namespace Smartstore.Engine
                     .Cast<CoreAssembly>()
                     .ToArray();
 
+                var appAssemblies = AssemblyLoadContext.Default.Assemblies
+                    .Where(x => x.FullName.StartsWith(SmartstoreNamespace) && IsCoreDependency(x.GetName().Name))
+                    .Select(x => new
+                    {
+                        Name = x.GetName(),
+                        Assembly = x
+                    })
+                    .ToArray();
+
                 foreach (var lib in libs)
                 {
                     try
                     {
-                        var assembly = AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName(lib.Name));
-                        assemblies.Add(assembly);
-
-                        Engine.Application.Logger.Debug("Assembly '{0}' discovered and loaded.", lib.Name);
+                        var assembly = appAssemblies.FirstOrDefault(x => x.Name.Name == lib.Name.Name)?.Assembly;
+                        if (assembly == null)
+                        {
+                            assembly = AssemblyLoadContext.Default.LoadFromAssemblyName(lib.Name);
+                        }
+                        
+                        if (assembly != null)
+                        {
+                            assemblies.Add(assembly);
+                            Engine.Application.Logger.Debug("Core assembly '{0}' discovered and loaded.", lib.Name.Name);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -121,6 +136,13 @@ namespace Smartstore.Engine
                 }
 
                 return assemblies;
+
+                bool IsCoreDependency(string name)
+                {
+                    return (name == SmartstoreNamespace || name.StartsWith(nsPrefix)) &&
+                        // Exclude data provider projects (they are loaded dynamically)
+                        !name.StartsWith(nsPrefix + "Data.");
+                }
             }
 
             protected override IEnumerable<IModuleDescriptor> DiscoverModules()
@@ -170,11 +192,11 @@ namespace Smartstore.Engine
 
             class CoreAssembly : ITopologicSortable<string>
             {
-                public string Name { get; init; }
+                public AssemblyName Name { get; init; }
                 public Assembly Assembly { get; init; }
                 string ITopologicSortable<string>.Key
                 {
-                    get => Name;
+                    get => Name.Name;
                 }
 
                 public string[] DependsOn { get; init; }

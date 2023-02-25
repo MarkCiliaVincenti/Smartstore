@@ -1,5 +1,4 @@
-﻿using System.Data;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Autofac;
 using Microsoft.AspNetCore.Http;
 using Smartstore.Caching;
@@ -164,7 +163,7 @@ namespace Smartstore.Core.Configuration
                     // Insert
                     setting = new Setting
                     {
-                        Name = key.ToLowerInvariant(),
+                        Name = key,
                         Value = currentValue,
                         StoreId = storeId
                     };
@@ -187,15 +186,11 @@ namespace Smartstore.Core.Configuration
 
             if (db != null)
             {
-                var conState = db.Database.GetDbConnection().State;
-                if (conState == ConnectionState.Closed)
-                {
-                    // Don't dispose request scoped main db instance.
-                    return ActionDisposable.Empty;
-                }
+                // Don't dispose request scoped main db instance.
+                return ActionDisposable.Empty;
             }
 
-            // Fetch a fresh DbContext if no scope is given or current connection is not in "Closed" state.
+            // Fetch a fresh DbContext if no scope is given.
             db = _dbContextFactory.CreateDbContext();
 
             return db;

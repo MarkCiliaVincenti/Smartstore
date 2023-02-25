@@ -99,7 +99,14 @@ namespace Smartstore.Core.DataExchange.Export
                 return null;
             }
 
-            dynamic result = new DynamicEntity(product);
+            var dynamicEntity = new DynamicEntity(product);
+
+            if (product.MergedDataValues != null)
+            {
+                dynamicEntity.MergeRange(product.MergedDataValues);
+            }
+
+            dynamic result = dynamicEntity;
             var localizedName = ctx.GetTranslation(product, nameof(product.Name), product.Name);
 
             result.AppliedDiscounts = null;
@@ -508,7 +515,7 @@ namespace Smartstore.Core.DataExchange.Export
             if (ctx.Supports(ExportFeatures.OffersShippingTimeFallback))
             {
                 dynamic deliveryTime = dynObject.DeliveryTime;
-                dynObject._ShippingTime = deliveryTime == null ? ctx.Projection.ShippingTime : deliveryTime.Name;
+                dynObject._ShippingTime = deliveryTime != null ? (string)deliveryTime.Name : ctx.Projection.ShippingTime;
             }
 
             if (ctx.Supports(ExportFeatures.OffersShippingCostsFallback))
