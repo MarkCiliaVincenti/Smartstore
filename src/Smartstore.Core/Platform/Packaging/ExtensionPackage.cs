@@ -30,8 +30,7 @@ namespace Smartstore.Core.Packaging
                 var manifest = archive.GetEntry(PackagingUtility.ManifestFileName);
                 if (manifest == null)
                 {
-                    // TODO: (core) Throw typed message, catch in controller and notify with localized message. 
-                    throw new ArgumentException("TODO", nameof(archiveStream));
+                    throw new ArgumentException("Manifest file 'manifest.json' could not be extracted from zip archive.", nameof(archiveStream));
                 }
 
                 // TODO: (core) Throw typed message if deserialization fails, catch in controller and notify with localized message. 

@@ -77,6 +77,29 @@ namespace Smartstore.Data.SqlServer
                     RAISERROR (@ErrorMessage, 16, 1)
                  END";
 
+        private static string TableInfoSql()
+            => @"SELECT 
+                    t.NAME AS TableName,
+                    p.rows AS NumRows,
+                    SUM(a.total_pages) * 8192 AS TotalSpace, 
+                    SUM(a.used_pages) * 8192 AS UsedSpace
+                FROM 
+                    sys.tables t
+                INNER JOIN      
+                    sys.indexes i ON t.OBJECT_ID = i.object_id
+                INNER JOIN 
+                    sys.partitions p ON i.object_id = p.OBJECT_ID AND i.index_id = p.index_id
+                INNER JOIN 
+                    sys.allocation_units a ON p.partition_id = a.container_id
+                WHERE 
+                    t.NAME NOT LIKE 'sys%' 
+                    AND t.is_ms_shipped = 0
+                    AND i.OBJECT_ID > 255 
+                GROUP BY 
+                    t.NAME, p.Rows
+                ORDER BY 
+                    TotalSpace DESC;";
+
         public override DbSystemType ProviderType => DbSystemType.SqlServer;
 
         public override string ProviderFriendlyName
@@ -94,7 +117,13 @@ namespace Smartstore.Data.SqlServer
             | DataProviderFeatures.StreamBlob
             | DataProviderFeatures.ExecuteSqlScript
             | DataProviderFeatures.StoredProcedures
-            | DataProviderFeatures.ReadSequential;
+            | DataProviderFeatures.ReadSequential
+            | DataProviderFeatures.ReadTableInfo;
+
+        protected override string SqlBatchTerminator
+        {
+            get => "GO";
+        }
 
         public override DbParameter CreateParameter()
         {
@@ -188,15 +217,15 @@ OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY";
             return DetectSqlError(updateException?.InnerException, _uniquenessViolationErrorCodes);
         }
         
-        protected override async Task<long> GetDatabaseSizeCore(bool async)
+        protected override Task<long> GetDatabaseSizeCore(bool async)
         {
-            var sql = "SELECT SUM(size * 8192) FROM sys.database_files";
+            var sql = "SELECT SUM(CAST(size AS bigint) * 8192) FROM sys.database_files";
             return async
-                ? (await Database.ExecuteScalarRawAsync<int>(sql)).Convert<long>()
-                : Database.ExecuteScalarRaw<int>(sql).Convert<long>();
+                ? Database.ExecuteScalarRawAsync<long>(sql)
+                : Task.FromResult(Database.ExecuteScalarRaw<long>(sql));
         }
 
-        protected override Task<int> ShrinkDatabaseCore(bool async, CancellationToken cancelToken = default)
+        protected override Task<int> ShrinkDatabaseCore(bool async, bool onlyWhenFast, CancellationToken cancelToken = default)
         {
             var sql = "DBCC SHRINKDATABASE(0)";
             return async
@@ -242,39 +271,17 @@ OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY";
                 : Task.FromResult(Database.ExecuteSqlRaw(RestoreDatabaseSql(DatabaseName), new object[] { backupFullPath }));
         }
 
-        protected override IList<string> SplitSqlScript(string sqlScript)
-        {
-            var commands = new List<string>();
-            var lines = sqlScript.GetLines(true);
-            var command = string.Empty;
-
-            foreach (var line in lines)
-            {
-                // Ignore comments
-                if (line.StartsWith("--") || line.StartsWith("/*"))
-                {
-                    continue;
-                }
-
-                var isDelimiter = line.EqualsNoCase("GO");
-
-                if (!isDelimiter)
-                {
-                    command += line + Environment.NewLine;
-                }
-                else
-                {
-                    commands.Add(command);
-                    command = string.Empty;
-                }
-            }
-
-            return commands;
-        }
-
         protected override Stream OpenBlobStreamCore(string tableName, string blobColumnName, string pkColumnName, object pkColumnValue)
         {
             return new SqlBlobStream(this, tableName, blobColumnName, pkColumnName, pkColumnValue);
+        }
+
+        protected override async Task<List<DbTableInfo>> ReadTableInfosCore(bool async, CancellationToken cancelToken = default)
+        {
+            var sql = TableInfoSql();
+            return async
+                ? await Database.ExecuteQueryRawAsync<DbTableInfo>(sql, cancelToken).ToListAsync(cancelToken)
+                : Database.ExecuteQueryRaw<DbTableInfo>(sql).ToList();
         }
 
         private long GetSqlServerEdition()

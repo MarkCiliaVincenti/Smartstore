@@ -7,6 +7,9 @@ namespace Smartstore.Core.Identity
 {
     public sealed class CookieConsentAttribute : TypeFilterAttribute
     {
+        /// <summary>
+        /// Checks if the shop visitor has already agreed to the use of cookies, and opens the CookieManager if he or she hasn't.
+        /// </summary>
         public CookieConsentAttribute()
             : base(typeof(CookieConsentFilter))
         {

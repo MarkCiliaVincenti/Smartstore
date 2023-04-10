@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Smartstore.ComponentModel;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Data;
 using Smartstore.Core.Localization;
 using Smartstore.Core.Security;
@@ -162,9 +162,9 @@ namespace Smartstore.ShippingByWeight.Controllers
 
             if (ids.Any())
             {
-                var ShippingRates = await _db.ShippingRatesByWeight().GetManyAsync(ids, true);
+                var shippingRates = await _db.ShippingRatesByWeight().GetManyAsync(ids, true);
 
-                _db.ShippingRatesByWeight().RemoveRange(ShippingRates);
+                _db.ShippingRatesByWeight().RemoveRange(shippingRates);
 
                 numDeleted = await _db.SaveChangesAsync();
                 success = true;

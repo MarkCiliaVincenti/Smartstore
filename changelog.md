@@ -1,26 +1,76 @@
 # Release Notes
 
+## Smartstore 5.1.0
+
+### New Features
+
+### Improvements
+
+### Bugfixes
+
+- PdfConverter failed after cron job cleaned up temporary files in App_Data directory
+- Fixed display of orders in MyAccount area when `OrderSettings.DisplayOrdersOfAllStores` was set to `true`
+
 ## Smartstore 5.0.4
 
 ### New Features
 
-- **easyCredit** plugin
+- **PostgreSQL** database support
+- **SQLite** database support
+- **easyCredit** plugin (commercial)
+- **DependingPrices** plugin (commercial). Enables configuration of prices depending on customer groups, language, store or customer number.
+- Embedded Base64 image offloader: finds embedded images in long HTML descriptions, extracts and saves them to the media storage.
+- New option for mail accounts to configure SMTP connection encryption.
+- New app system settings: `UsePooledDbContextFactory`, `UseDbCache`, `UseSequentialDbDataReader`
+- Database table statistics in System / System Info (row count, total space, used space)
 
 ### Improvements
 
+- Memory management
+  - Fixed several memory leaks
+  - Disabled DbContext pooling (causes memory leaks)
+  - New sequential data reader (disabled by default) uses significantly less memory than the built-in reader. Should be enabled if HTML descriptions are extremely large (> 1 MB).
+  - More aggressive garbage collector
+  - App now uses significantly less memory under heavy load
 - Added price settings for discount requirements to be validated in product lists.
+- Faster loading of product lists that contain bundles with per-item pricing.
+- MegaSearch:
+	- A significant increase in search speed, especially when dealing with large amounts of data.
+	- Faster indexing.
+	- Word stemming configurable for all languages.
+- Added `data-invariant` attribute to number input controls 
+- Closed #543 Google Category (GMC) always get lost when copying a product
+- Ajax request to external URLs do not add X-XSRF-Tokens anymore
+- Definition of several preselected product variant attribute values is now prohibited
 
 ### Bugfixes
 
 - #557 If the state is optional for addresses, none should be preselected when creating them.
 - #608 Build DeleteGuestCustomers query with LINQ again.
 - Fixed ArgumentException "The source argument contains duplicate keys" in case of menus with duplicate system names.
+- Fixed SqlClient deadlock exception when resolving guest account by client identity.
 - MySQL: fixed migration failure when UTC_TIMESTAMP was used as default value for date columns.
 - High data payload: 
 	- Fixed InvalidOperationException "A second operation was started on this context instance before a previous operation completed" when opening category (and others) edit page.
 	- Fixed many product tags blocks the loading of the product edit page due to initialization of the product tag selection box.
 - Fixed discount coupon code could not be applied in some cases.
 - PostFinance: fixed "The specified refund amount CHF needs to be rounded to a maximum of 2 decimal places".
+- Fixed ArgumentNullException in ProcessImageQuery.Add if name is null.
+- Fixed price adjustment of attributes was saved only with two decimal places.
+- Fixed missing inventory adjustment when the stock quantity was changed through product grid.
+- The link to remove a search filter must not contain a page index, otherwise inconsistent search results will occur.
+- Fixed InvalidCastException "Unable to cast object of type 'Newtonsoft.Json.Linq.JObject' to type 'Smartstore.Core.Search.Facets.FacetGroup'" when OutputCache is active.
+- Category or manufacturer discount was not applied if no other changes were made to the category or manufacturer except for the discount assignment.
+- Cart rules assigned to a payment method were not applied in checkout.
+- MegaSearch: fixed a memory leak during indexing.
+- Fixed native validation for quantity inputs
+- Google Analytics: Fixed rendering of prices with thousands separator
+- #621 Cart item quantity couldn't be updated if cart item validation returned errors
+- #628 sort Triple DatePicker year descending   
+- #622 Tab created with Event.cs does not work on Mobile.
+- FileManager: Files weren't displayed correctly in backend.
+- A product should be found by its SKU if there is a deleted product with identical SKU.
+- Links to assigned entities sometimes not displayed on rule edit page.
 
 
 ## Smartstore 5.0.3

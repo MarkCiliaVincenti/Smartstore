@@ -11,8 +11,8 @@ using Smartstore.Core.Catalog.Search;
 using Smartstore.Core.Catalog.Search.Modelling;
 using Smartstore.Core.Checkout.Cart;
 using Smartstore.Core.Checkout.Tax;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Common.Services;
-using Smartstore.Core.Common.Settings;
 using Smartstore.Core.Content.Media;
 using Smartstore.Core.Content.Menus;
 using Smartstore.Core.Identity;
@@ -182,7 +182,7 @@ namespace Smartstore.Web.Controllers
                     .Select(x => x.Manufacturer.MediaFile)
                     .Where(x => x != null)
                     .Distinct()
-                    .Select(x => _mediaService.ConvertMediaFile(x))
+                    .Select(_mediaService.ConvertMediaFile)
                     .ToDictionarySafe(x => x.Id);
             }
 
@@ -234,10 +234,8 @@ namespace Smartstore.Web.Controllers
                 }
             }
 
-            var model = new ImageModel
+            var model = new ImageModel(file, _mediaSettings.ManufacturerThumbPictureSize)
             {
-                File = file,
-                ThumbSize = _mediaSettings.ManufacturerThumbPictureSize,
                 Title = file?.File?.GetLocalized(x => x.Title)?.Value.NullEmpty() ?? T("Media.Manufacturer.ImageLinkTitleFormat", localizedName),
                 Alt = file?.File?.GetLocalized(x => x.Alt)?.Value.NullEmpty() ?? T("Media.Manufacturer.ImageAlternateTextFormat", localizedName),
                 NoFallback = _catalogSettings.HideManufacturerDefaultPictures
@@ -315,10 +313,8 @@ namespace Smartstore.Web.Controllers
                         Name = name,
                         SeName = manufacturer.GetActiveSlug(),
                         DisplayOrder = manufacturer.DisplayOrder,
-                        Image = new ImageModel
+                        Image = new ImageModel(file, _mediaSettings.ManufacturerThumbPictureSize)
                         {
-                            File = file,
-                            ThumbSize = _mediaSettings.ManufacturerThumbPictureSize,
                             Alt = file?.File?.GetLocalized(x => x.Alt)?.Value.NullEmpty() ?? name,
                             Title = file?.File?.GetLocalized(x => x.Title)?.Value.NullEmpty() ?? name,
                             NoFallback = _catalogSettings.HideManufacturerDefaultPictures
@@ -400,10 +396,8 @@ namespace Smartstore.Web.Controllers
 
                     files.TryGetValue(c.MediaFileId ?? 0, out var file);
 
-                    model.Image = new ImageModel
+                    model.Image = new ImageModel(file, thumbSize)
                     {
-                        File = file,
-                        ThumbSize = thumbSize,
                         Title = file?.File?.GetLocalized(x => x.Title)?.Value.NullEmpty() ?? string.Format(T("Media.Category.ImageLinkTitleFormat"), name),
                         Alt = file?.File?.GetLocalized(x => x.Alt)?.Value.NullEmpty() ?? string.Format(T("Media.Category.ImageAlternateTextFormat"), name),
                         NoFallback = _catalogSettings.HideCategoryDefaultPictures
@@ -488,10 +482,8 @@ namespace Smartstore.Web.Controllers
                 }
             }
 
-            var model = new ImageModel
+            var model = new ImageModel(file, _mediaSettings.CategoryThumbPictureSize)
             {
-                File = file,
-                ThumbSize = _mediaSettings.CategoryThumbPictureSize,
                 Title = file?.File?.GetLocalized(x => x.Title)?.Value.NullEmpty() ?? string.Format(T("Media.Category.ImageLinkTitleFormat"), localizedName),
                 Alt = file?.File?.GetLocalized(x => x.Alt)?.Value.NullEmpty() ?? string.Format(T("Media.Category.ImageAlternateTextFormat"), localizedName),
                 NoFallback = _catalogSettings.HideCategoryDefaultPictures

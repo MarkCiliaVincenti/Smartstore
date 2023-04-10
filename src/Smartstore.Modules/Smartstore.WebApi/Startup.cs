@@ -64,7 +64,7 @@ namespace Smartstore.Web.Api
                 //o.IgnoreObsoleteProperties();
 
                 // Avoids "Conflicting schemaIds" (multiple types with the same name but different namespaces).
-                o.CustomSchemaIds(type => type.FullName);
+                o.CustomSchemaIds(type => type.GetFriendlyId(true));
 
                 o.AddSecurityDefinition("Basic", new OpenApiSecurityScheme
                 {

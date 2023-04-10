@@ -96,6 +96,7 @@ namespace Smartstore.PayPal.Controllers
         }
 
         [HttpPost]
+        [AuthorizeAdmin]
         [FormValueRequired("createwebhook"), ActionName("Configure")]
         public async Task<IActionResult> CreateWebhook(ConfigurationModel model)
         {
@@ -165,6 +166,7 @@ namespace Smartstore.PayPal.Controllers
         /// Called by Ajax request after onboarding to get ClientId & Secret.
         /// </summary>
         [HttpPost]
+        [AuthorizeAdmin]
         public async Task<IActionResult> GetCredentials(string authCode, string sharedId, string sellerNonce)
         {
             var success = false;
@@ -223,6 +225,7 @@ namespace Smartstore.PayPal.Controllers
         /// Called by Ajax request after onboarding to get status about confirmed email & if payments are receivable.
         /// </summary>
         [HttpPost]
+        [AuthorizeAdmin]
         public async Task<IActionResult> GetStatus()
         {
             var success = false;
@@ -267,7 +270,7 @@ namespace Smartstore.PayPal.Controllers
             var storeScope = GetActiveStoreScopeConfiguration();
             var store = storeScope == 0 ? Services.StoreContext.CurrentStore : Services.StoreContext.GetStoreById(storeScope);
 
-            var storeUrl = store.GetHost(true).EnsureEndsWith("/");
+            var storeUrl = store.GetHost(true).EnsureEndsWith('/');
 
             if (webhooks.Hooks.Length < 1 || !webhooks.Hooks.Any(x => x.Url.ContainsNoCase(storeUrl)))
             {

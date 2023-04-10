@@ -1,5 +1,4 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using System.Xml.Linq;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Localization;
 using Smartstore.Core.Security;
@@ -74,7 +73,7 @@ namespace Smartstore.Core.Content.Topics
         /// <summary>
         /// Gets or sets the body.
         /// </summary>
-        [MaxLength]
+        [MaxLength, NonSummary]
         [LocalizedProperty]
         public string Body { get; set; }
 

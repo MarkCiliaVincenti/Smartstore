@@ -178,10 +178,11 @@ namespace Smartstore.Web.TagHelpers.Shared
                 if (EndYear == null)
                     EndYear = DateTime.UtcNow.Year + 10;
 
-                for (int i = BeginYear.Value; i <= EndYear.Value; i++)
+                for (int i = EndYear.Value; i >= BeginYear.Value; i--)
                 {
-                    years.AppendFormat("<option value='{0}'{1}>{0}</option>", i,
-                        (Year != null && Convert.ToInt32(Year) == i) ? " selected=\"selected\"" : null);
+                    var isSelected = Year == i;
+
+                    years.AppendFormat("<option value='{0}'{1}>{0}</option>", i, isSelected ? " selected=\"selected\"" : null);
                 }
 
                 yearSelect.InnerHtml.AppendHtml(years.ToString());

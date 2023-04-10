@@ -14,6 +14,16 @@ namespace Smartstore.Data.MySql
 {
     public class MySqlDataProvider : DataProvider
     {
+        private static string TableInfoSql(string database)
+            => $@"SELECT 
+	                TABLE_NAME AS TableName, 
+	                TABLE_ROWS AS NumRows,
+	                (DATA_LENGTH + INDEX_LENGTH) AS TotalSpace, 
+	                CAST((DATA_LENGTH + INDEX_LENGTH) AS SIGNED) - CAST(DATA_FREE AS SIGNED) AS UsedSpace
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = ""{database}""
+                ORDER BY TotalSpace DESC";
+
         public MySqlDataProvider(DatabaseFacade database)
             : base(database)
         {
@@ -33,7 +43,13 @@ namespace Smartstore.Data.MySql
             | DataProviderFeatures.AccessIncrement
             | DataProviderFeatures.ExecuteSqlScript
             | DataProviderFeatures.StoredProcedures
-            | DataProviderFeatures.ReadSequential;
+            | DataProviderFeatures.ReadSequential
+            | DataProviderFeatures.ReadTableInfo;
+
+        protected override bool SqlSupportsDelimiterStatement
+        {
+            get => true;
+        }
 
         public override DbParameter CreateParameter()
             => new MySqlParameter();
@@ -133,16 +149,21 @@ LIMIT {take} OFFSET {skip}";
         
         protected override Task<long> GetDatabaseSizeCore(bool async)
         {
-            var sql = $@"SELECT SUM(data_length + index_length) AS 'size'
-                FROM information_schema.TABLES
-                WHERE table_schema = '{DatabaseName}'";
+            var sql = $@"SELECT CAST(SUM(DATA_LENGTH + INDEX_LENGTH) AS SIGNED) AS 'size'
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = '{DatabaseName}'";
             return async
                 ? Database.ExecuteScalarRawAsync<long>(sql)
                 : Task.FromResult(Database.ExecuteScalarRaw<long>(sql));
         }
 
-        protected override Task<int> ShrinkDatabaseCore(bool async, CancellationToken cancelToken = default)
+        protected override Task<int> ShrinkDatabaseCore(bool async, bool onlyWhenFast, CancellationToken cancelToken = default)
         {
+            if (onlyWhenFast)
+            {
+                return Task.FromResult(0);
+            }
+            
             return async
                 ? ReIndexTablesAsync(cancelToken)
                 : Task.FromResult(ReIndexTables());
@@ -182,48 +203,17 @@ LIMIT {take} OFFSET {skip}";
                : Task.FromResult(Database.ExecuteSqlRaw(sql));
         }
 
-        protected override IList<string> SplitSqlScript(string sqlScript)
-        {
-            var commands = new List<string>();
-            var lines = sqlScript.GetLines(true);
-            var delimiter = ";";
-            var command = string.Empty;
-
-            foreach (var line in lines)
-            {
-                // Ignore comments
-                if (line.StartsWith("--") || line.StartsWith("#"))
-                {
-                    continue;
-                }
-
-                // In MySQL scripts, you can change the delimiter using the DELIMITER statement.
-                // To handle this scenario, we need to track the current delimiter
-                // and change it whenever we encounter a DELIMITER statement
-                if (line.StartsWithNoCase("DELIMITER"))
-                {
-                    delimiter = line.Split(' ')[1].Trim();
-                    continue;
-                }
-
-                if (!line.EndsWithNoCase(delimiter))
-                {
-                    command += line + Environment.NewLine;
-                }
-                else
-                {
-                    command += line[..^delimiter.Length];
-                    commands.Add(command);
-                    command = string.Empty;
-                }
-            }
-
-            return commands;
-        }
-
         protected override Stream OpenBlobStreamCore(string tableName, string blobColumnName, string pkColumnName, object pkColumnValue)
         {
             return new SqlBlobStream(this, tableName, blobColumnName, pkColumnName, pkColumnValue);
+        }
+
+        protected override async Task<List<DbTableInfo>> ReadTableInfosCore(bool async, CancellationToken cancelToken = default)
+        {
+            var sql = TableInfoSql(DatabaseName);
+            return async
+                ? await Database.ExecuteQueryRawAsync<DbTableInfo>(sql, cancelToken).ToListAsync(cancelToken)
+                : Database.ExecuteQueryRaw<DbTableInfo>(sql).ToList();
         }
     }
 }

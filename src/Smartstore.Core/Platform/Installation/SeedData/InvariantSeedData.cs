@@ -13,7 +13,7 @@ using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Checkout.Shipping;
 using Smartstore.Core.Checkout.Tax;
 using Smartstore.Core.Common;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Common.Tasks;
 using Smartstore.Core.Configuration;
 using Smartstore.Core.Content.Media;
@@ -33,6 +33,7 @@ using Smartstore.Core.Rules;
 using Smartstore.Core.Security;
 using Smartstore.Core.Seo;
 using Smartstore.Core.Stores;
+using Smartstore.Net.Mail;
 using Smartstore.Scheduling;
 
 namespace Smartstore.Core.Installation
@@ -482,7 +483,7 @@ namespace Smartstore.Core.Installation
                     Port = 25,
                     Username = "123",
                     Password = "123",
-                    EnableSsl = false,
+                    MailSecureOption = MailSecureOption.Auto,
                     UseDefaultCredentials = false
                 }
             };

@@ -14,6 +14,15 @@ namespace Smartstore.Data.PostgreSql
 {
     public class PostgreSqlDataProvider : DataProvider
     {
+        private static string TableInfoSql()
+            => @"SELECT 
+                    relname AS TableName,
+                    n_live_tup AS NumRows,
+                    pg_total_relation_size(relid) AS TotalSpace,
+                    pg_table_size(relid) AS UsedSpace
+                FROM pg_stat_user_tables
+                ORDER BY pg_total_relation_size(relid) DESC;";
+
         public PostgreSqlDataProvider(DatabaseFacade database)
             : base(database)
         {
@@ -34,7 +43,13 @@ namespace Smartstore.Data.PostgreSql
             | DataProviderFeatures.StreamBlob
             | DataProviderFeatures.ExecuteSqlScript
             | DataProviderFeatures.ReadSequential
-            | DataProviderFeatures.StoredProcedures;
+            | DataProviderFeatures.StoredProcedures
+            | DataProviderFeatures.ReadTableInfo;
+
+        protected override bool SqlSupportsDelimiterStatement
+        {
+            get => true;
+        }
 
         public override DbParameter CreateParameter()
         {
@@ -141,8 +156,13 @@ LIMIT {take} OFFSET {skip}";
                 : Task.FromResult(Database.ExecuteScalarRaw<long>(sql));
         }
 
-        protected override Task<int> ShrinkDatabaseCore(bool async, CancellationToken cancelToken = default)
+        protected override Task<int> ShrinkDatabaseCore(bool async, bool onlyWhenFast, CancellationToken cancelToken = default)
         {
+            if (onlyWhenFast)
+            {
+                return Task.FromResult(0);
+            }
+
             var sql = "VACUUM FULL";
             return async
                 ? Database.ExecuteSqlRawAsync(sql, cancelToken)
@@ -163,8 +183,8 @@ LIMIT {take} OFFSET {skip}";
             var sql = $"SELECT COALESCE(last_value + CASE WHEN is_called THEN 1 ELSE 0 END, 1) as Value FROM {seqName}";
 
             return async
-               ? (await Database.ExecuteScalarRawAsync<int>(sql)).Convert<int?>()
-               : Database.ExecuteScalarRaw<int>(sql).Convert<int?>();
+               ? (await Database.ExecuteScalarRawAsync<long?>(sql)).Convert<int?>()
+               : Database.ExecuteScalarRaw<long?>(sql).Convert<int?>();
         }
 
         protected override async Task SetTableIncrementCore(string tableName, int ident, bool async)
@@ -192,39 +212,17 @@ LIMIT {take} OFFSET {skip}";
             return seqName;
         }
 
-        protected override IList<string> SplitSqlScript(string sqlScript)
-        {
-            var commands = new List<string>();
-            var lines = sqlScript.GetLines(true);
-            var command = string.Empty;
-            var delimiter = ";";
-
-            foreach (var line in lines)
-            {
-                // Ignore comments
-                if (line.StartsWith("--"))
-                {
-                    continue;
-                }
-
-                if (!line.EndsWith(delimiter))
-                {
-                    command += line + Environment.NewLine;
-                }
-                else
-                {
-                    command += line[..^delimiter.Length];
-                    commands.Add(command);
-                    command = string.Empty;
-                }
-            }
-
-            return commands;
-        }
-
         protected override Stream OpenBlobStreamCore(string tableName, string blobColumnName, string pkColumnName, object pkColumnValue)
         {
             return new SqlBlobStream(this, tableName, blobColumnName, pkColumnName, pkColumnValue);
+        }
+
+        protected override async Task<List<DbTableInfo>> ReadTableInfosCore(bool async, CancellationToken cancelToken = default)
+        {
+            var sql = TableInfoSql();
+            return async
+                ? await Database.ExecuteQueryRawAsync<DbTableInfo>(sql, cancelToken).ToListAsync(cancelToken)
+                : Database.ExecuteQueryRaw<DbTableInfo>(sql).ToList();
         }
     }
 }

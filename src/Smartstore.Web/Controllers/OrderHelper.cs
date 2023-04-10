@@ -14,8 +14,8 @@ using Smartstore.Core.Checkout.Orders;
 using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Checkout.Shipping;
 using Smartstore.Core.Checkout.Tax;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Common.Services;
-using Smartstore.Core.Common.Settings;
 using Smartstore.Core.Content.Media;
 using Smartstore.Core.Localization;
 using Smartstore.Core.Security;
@@ -142,10 +142,8 @@ namespace Smartstore.Web.Controllers
                 }
             }
 
-            return new ImageModel
+            return new ImageModel(file, pictureSize)
             {
-                File = file,
-                ThumbSize = pictureSize,
                 Title = file?.File?.GetLocalized(x => x.Title)?.Value.NullEmpty() ?? T("Media.Product.ImageLinkTitleFormat", productName),
                 Alt = file?.File?.GetLocalized(x => x.Alt)?.Value.NullEmpty() ?? T("Media.Product.ImageAlternateTextFormat", productName),
                 NoFallback = catalogSettings.HideProductDefaultPictures
@@ -266,7 +264,7 @@ namespace Smartstore.Web.Controllers
                 model.Image = await PrepareOrderItemImageModelAsync(
                     orderItem.Product,
                     mediaSettings.CartThumbPictureSize,
-                    model.ProductName,
+                    model.ProductName!,
                     orderItem.AttributeSelection,
                     catalogSettings);
             }
@@ -299,19 +297,19 @@ namespace Smartstore.Web.Controllers
                 CustomerComment = order.CustomerOrderComment,
                 OrderNumber = order.GetOrderNumber(),
                 CreatedOn = _dateTimeHelper.ConvertToUserTime(order.CreatedOnUtc, DateTimeKind.Utc),
-                OrderStatus = await _services.Localization.GetLocalizedEnumAsync(order.OrderStatus),
+                OrderStatus = _services.Localization.GetLocalizedEnum(order.OrderStatus),
                 IsReOrderAllowed = orderSettings.IsReOrderAllowed,
                 IsReturnRequestAllowed = _orderProcessingService.IsReturnRequestAllowed(order),
                 DisplayPdfInvoice = pdfSettings.Enabled,
                 RenderOrderNotes = pdfSettings.RenderOrderNotes,
                 // Shipping info.
-                ShippingStatus = await _services.Localization.GetLocalizedEnumAsync(order.ShippingStatus)
+                ShippingStatus = _services.Localization.GetLocalizedEnum(order.ShippingStatus)
             };
 
             // TODO: refactor modelling for multi-order processing.
             var companyCountry = await _db.Countries.FindByIdAsync(companyInfoSettings.CountryId, false);
             model.MerchantCompanyInfo = companyInfoSettings;
-            model.MerchantCompanyCountryName = companyCountry?.GetLocalized(x => x.Name);
+            model.MerchantCompanyCountryName = companyCountry?.GetLocalized(x => x.Name)!;
 
             if (order.ShippingStatus != ShippingStatus.ShippingNotRequired)
             {

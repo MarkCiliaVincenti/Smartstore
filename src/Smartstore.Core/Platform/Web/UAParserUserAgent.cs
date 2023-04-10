@@ -1,7 +1,6 @@
 ﻿using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Smartstore.Utilities;
-using uap = UAParser;
 
 namespace Smartstore.Core.Web
 {
@@ -10,7 +9,7 @@ namespace Smartstore.Core.Web
         [GeneratedRegex("iPad|Kindle Fire|Nexus 10|Xoom|Transformer|MI PAD|IdeaTab", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant)]
         private static partial Regex TabletPatternRegex();
 
-        private readonly static uap.Parser _uap;
+        private readonly static UAParser.Parser _uap;
         private static readonly Regex _tabletPattern = TabletPatternRegex();
 
         #region Mobile UAs, OS & Devices
@@ -120,9 +119,20 @@ namespace Smartstore.Core.Web
         static UAParserUserAgent()
         {
             var path = CommonHelper.MapPath("/App_Data/UAParser.regexes.yaml");
-            _uap = File.Exists(path)
-                ? uap.Parser.FromYaml(path)
-                : uap.Parser.GetDefault();
+
+            if (File.Exists(path))
+            {
+                try
+                {
+                    _uap = UAParser.Parser.FromYaml(File.ReadAllText(path));
+                    return;
+                }
+                catch
+                {
+                }
+            }
+
+            _uap = UAParser.Parser.GetDefault();
         }
 
         public UAParserUserAgent(IHttpContextAccessor httpContextAccessor)

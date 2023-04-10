@@ -6,15 +6,14 @@ using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Checkout.Orders;
 using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Checkout.Tax;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Common.Services;
-using Smartstore.Core.Common.Settings;
 using Smartstore.Core.Content.Media;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Localization;
 using Smartstore.Core.Messaging;
 using Smartstore.Core.Security;
 using Smartstore.Core.Seo;
-using Smartstore.Core.Seo.Routing;
 using Smartstore.IO;
 using Smartstore.Utilities;
 using Smartstore.Web.Models.Common;
@@ -584,7 +583,7 @@ namespace Smartstore.Web.Controllers
                     var itemModel = new CustomerReturnRequestsModel.ReturnRequestModel
                     {
                         Id = returnRequest.Id,
-                        ReturnRequestStatus = await returnRequest.ReturnRequestStatus.GetLocalizedEnumAsync(Services.WorkContext.WorkingLanguage.Id),
+                        ReturnRequestStatus = returnRequest.ReturnRequestStatus.GetLocalizedEnum(Services.WorkContext.WorkingLanguage.Id),
                         ProductId = orderItem.Product.Id,
                         ProductName = orderItem.Product.GetLocalized(x => x.Name),
                         ProductSeName = await orderItem.Product.GetActiveSlugAsync(),
@@ -1009,7 +1008,7 @@ namespace Smartstore.Web.Controllers
             model.FirstNameRequired = _customerSettings.FirstNameRequired;
             model.LastNameRequired = _customerSettings.LastNameRequired;
             model.DisplayVatNumber = _taxSettings.EuVatEnabled;
-            model.VatNumberStatusNote = await ((VatNumberStatus)customer.VatNumberStatusId).GetLocalizedEnumAsync(Services.WorkContext.WorkingLanguage.Id);
+            model.VatNumberStatusNote = ((VatNumberStatus)customer.VatNumberStatusId).GetLocalizedEnum(Services.WorkContext.WorkingLanguage.Id);
             model.GenderEnabled = _customerSettings.GenderEnabled;
             model.TitleEnabled = _customerSettings.TitleEnabled;
             model.DateOfBirthEnabled = _customerSettings.DateOfBirthEnabled;
@@ -1076,7 +1075,7 @@ namespace Smartstore.Web.Controllers
 
             var orders = await _db.Orders
                 .AsNoTracking()
-                .ApplyStandardFilter(customer.Id, _orderSettings.DisplayOrdersOfAllStores ? 0 : store.Id)
+                .ApplyStandardFilter(customer.Id, _orderSettings.DisplayOrdersOfAllStores ? null : store.Id)
                 .ToPagedList(orderPageIndex, _orderSettings.OrderListPageSize)
                 .LoadAsync();
 
@@ -1099,7 +1098,7 @@ namespace Smartstore.Web.Controllers
                         Id = x.Id,
                         OrderNumber = x.GetOrderNumber(),
                         CreatedOn = _dateTimeHelper.ConvertToUserTime(x.CreatedOnUtc, DateTimeKind.Utc),
-                        OrderStatus = await _localizationService.GetLocalizedEnumAsync(x.OrderStatus),
+                        OrderStatus = _localizationService.GetLocalizedEnum(x.OrderStatus),
                         IsReturnRequestAllowed = _orderProcessingService.IsReturnRequestAllowed(x),
                         OrderTotal = orderTotal
                     };
@@ -1130,7 +1129,7 @@ namespace Smartstore.Web.Controllers
                     {
                         Id = x.Id,
                         StartDate = _dateTimeHelper.ConvertToUserTime(x.StartDateUtc, DateTimeKind.Utc),
-                        CycleInfo = $"{x.CycleLength} {await _localizationService.GetLocalizedEnumAsync(x.CyclePeriod)}",
+                        CycleInfo = $"{x.CycleLength} {_localizationService.GetLocalizedEnum(x.CyclePeriod)}",
                         NextPayment = nextPaymentDate.HasValue ? _dateTimeHelper.ConvertToUserTime(nextPaymentDate.Value, DateTimeKind.Utc) : null,
                         TotalCycles = x.TotalCycles,
                         CyclesRemaining = await _paymentService.GetRecurringPaymentRemainingCyclesAsync(x),

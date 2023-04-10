@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Configuration;
 using Smartstore.Core.Data;
 using Smartstore.Core.Identity;
@@ -67,20 +67,26 @@ namespace Smartstore.Core.Common.Services
         public virtual TimeZoneInfo GetCustomerTimeZone(Customer customer)
         {
             if (_cachedUserTimeZone != null)
+            {
                 return _cachedUserTimeZone;
+            } 
 
-            // registered user
+            // Registered user
             TimeZoneInfo timeZone = null;
             if (_dateTimeSettings.AllowCustomersToSetTimeZone)
             {
-                string timeZoneId = string.Empty;
+                var timeZoneId = string.Empty;
                 if (customer != null)
+                {
                     timeZoneId = customer.TimeZoneId;
+                } 
 
                 try
                 {
                     if (timeZoneId.HasValue())
+                    {
                         timeZone = FindTimeZoneById(timeZoneId);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -89,8 +95,7 @@ namespace Smartstore.Core.Common.Services
             }
 
             // default timezone
-            if (timeZone == null)
-                timeZone = this.DefaultStoreTimeZone;
+            timeZone ??= DefaultStoreTimeZone;
 
             _cachedUserTimeZone = timeZone;
 
@@ -105,21 +110,22 @@ namespace Smartstore.Core.Common.Services
                 try
                 {
                     if (_dateTimeSettings.DefaultStoreTimeZoneId.HasValue())
+                    {
                         timeZoneInfo = FindTimeZoneById(_dateTimeSettings.DefaultStoreTimeZoneId);
+                    }
                 }
                 catch (Exception ex)
                 {
                     Debug.Write(ex.ToString());
                 }
 
-                if (timeZoneInfo == null)
-                    timeZoneInfo = TimeZoneInfo.Local;
+                timeZoneInfo ??= TimeZoneInfo.Local;
 
                 return timeZoneInfo;
             }
             set
             {
-                string defaultTimeZoneId = string.Empty;
+                var defaultTimeZoneId = string.Empty;
                 if (value != null)
                 {
                     defaultTimeZoneId = value.Id;
@@ -140,9 +146,11 @@ namespace Smartstore.Core.Common.Services
             set
             {
                 if (!_dateTimeSettings.AllowCustomersToSetTimeZone)
+                {
                     return;
+                }  
 
-                string timeZoneId = string.Empty;
+                var timeZoneId = string.Empty;
                 if (value != null)
                 {
                     timeZoneId = value.Id;

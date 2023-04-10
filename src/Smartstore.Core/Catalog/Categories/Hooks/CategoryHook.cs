@@ -58,7 +58,7 @@ namespace Smartstore.Core.Catalog.Categories
 
             foreach (var category in modifiedCategories)
             {
-                var valid = await IsValidCategoryHierarchy(category.Id, category.ParentCategoryId, cancelToken);
+                var valid = await IsValidCategoryHierarchy(category.Id, category.ParentId, cancelToken);
                 if (!valid)
                 {
                     invalidCategoryIds.Add(category.Id);
@@ -70,35 +70,35 @@ namespace Smartstore.Core.Catalog.Categories
                 var num = await _db.Categories
                     .Where(x => invalidCategoryIds.Contains(x.Id))
                     .ExecuteUpdateAsync(
-                        x => x.SetProperty(p => p.ParentCategoryId, p => 0));
+                        x => x.SetProperty(p => p.ParentId, p => null));
             }
 
             _requestCache.RemoveByPattern(CategoryService.CATEGORIES_PATTERN_KEY);
         }
 
-        private async Task<bool> IsValidCategoryHierarchy(int categoryId, int parentCategoryId, CancellationToken cancelToken)
+        private async Task<bool> IsValidCategoryHierarchy(int categoryId, int? parentCategoryId, CancellationToken cancelToken)
         {
             var parent = await _db.Categories
                 .Where(x => x.Id == parentCategoryId)
-                .Select(x => new { x.Id, x.ParentCategoryId })
+                .Select(x => new { x.Id, x.ParentId })
                 .FirstOrDefaultAsync(cancelToken);
 
             while (parent?.Id > 0)
             {
                 if (categoryId == parent.Id)
                 {
-                    // Same ID > invalid.
+                    // Same ID = invalid.
                     return false;
                 }
 
-                if (parent.ParentCategoryId == 0)
+                if (parent.ParentId == null)
                 {
                     break;
                 }
 
                 parent = await _db.Categories
-                    .Where(x => x.Id == parent.ParentCategoryId)
-                    .Select(x => new { x.Id, x.ParentCategoryId })
+                    .Where(x => x.Id == parent.ParentId)
+                    .Select(x => new { x.Id, x.ParentId })
                     .FirstOrDefaultAsync(cancelToken);
             }
 

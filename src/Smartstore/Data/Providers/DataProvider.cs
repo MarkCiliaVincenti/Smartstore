@@ -23,7 +23,8 @@ namespace Smartstore.Data.Providers
         StreamBlob = 1 << 6,
         ExecuteSqlScript = 1 << 7,
         StoredProcedures = 1 << 8,
-        ReadSequential = 1 << 9
+        ReadSequential = 1 << 9,
+        ReadTableInfo = 1 << 10
     }
 
     public abstract partial class DataProvider : Disposable
@@ -106,6 +107,11 @@ namespace Smartstore.Data.Providers
         public bool CanExecuteStoredProcedures
         {
             get => Features.HasFlag(DataProviderFeatures.StoredProcedures);
+        }
+
+        public bool CanReadTableInfo
+        {
+            get => Features.HasFlag(DataProviderFeatures.ReadTableInfo);
         }
 
         /// <summary>
@@ -197,20 +203,6 @@ namespace Smartstore.Data.Providers
         /// </returns>
         public abstract bool IsUniquenessViolationException(DbUpdateException ex);
 
-        /// <summary>
-        /// Creates a database backup
-        /// </summary>
-        /// <param name="fullPath">The full physical path to the backup file.</param>
-        protected virtual Task<int> BackupDatabaseCore(string fullPath, bool async, CancellationToken cancelToken = default)
-            => throw new NotSupportedException();
-
-        /// <summary>
-        /// Restores a database backup
-        /// </summary>
-        /// <param name="backupFullPath">The full physical path to the backup file to restore.</param>
-        protected virtual Task<int> RestoreDatabaseCore(string backupFullPath, bool async, CancellationToken cancelToken = default)
-            => throw new NotSupportedException();
-
         #endregion
 
         #region Optional overridable features
@@ -230,9 +222,13 @@ namespace Smartstore.Data.Providers
             => throw new NotSupportedException();
 
         /// <summary>
-        /// Shrinks / compacts the database
+        /// Shrinks / compacts the database.
         /// </summary>
-        protected virtual Task<int> ShrinkDatabaseCore(bool async, CancellationToken cancelToken = default)
+        /// <param name="onlyWhenFast">
+        /// If <c>true</c>, performs the shrink operation only if the underlying
+        /// data provider is capable of fast shrinking.
+        /// </param>
+        protected virtual Task<int> ShrinkDatabaseCore(bool async, bool onlyWhenFast, CancellationToken cancelToken = default)
             => throw new NotSupportedException();
 
         /// <summary>
@@ -258,14 +254,161 @@ namespace Smartstore.Data.Providers
             => throw new NotSupportedException();
 
         /// <summary>
+        /// Creates a database backup
+        /// </summary>
+        /// <param name="fullPath">The full physical path to the backup file.</param>
+        protected virtual Task<int> BackupDatabaseCore(string fullPath, bool async, CancellationToken cancelToken = default)
+            => throw new NotSupportedException();
+
+        /// <summary>
+        /// Restores a database backup
+        /// </summary>
+        /// <param name="backupFullPath">The full physical path to the backup file to restore.</param>
+        protected virtual Task<int> RestoreDatabaseCore(string backupFullPath, bool async, CancellationToken cancelToken = default)
+            => throw new NotSupportedException();
+
+        /// <summary>
+        /// Opens a sequential BLOB stream.
+        /// </summary>
+        /// <param name="tableName">Table name</param>
+        /// <param name="blobColumnName">Name of BLOB column</param>
+        /// <param name="pkColumnName">Name of primary key column in the given <paramref name="tableName"/>.</param>
+        /// <param name="pkColumnValue">Value of primary key.</param>
+        protected virtual Stream OpenBlobStreamCore(string tableName, string blobColumnName, string pkColumnName, object pkColumnValue)
+            => throw new NotSupportedException();
+
+        /// <summary>
+        /// Reads info/statistics about every public table in the database.
+        /// </summary>
+        protected virtual Task<List<DbTableInfo>> ReadTableInfosCore(bool async, CancellationToken cancelToken = default)
+            => throw new NotSupportedException();
+
+        protected virtual bool SqlSupportsDelimiterStatement
+        {
+            get => false;
+        }
+
+        protected virtual string SqlBatchTerminator
+        {
+            get => null;
+        }
+
+        /// <summary>
         /// Splits the given SQL script by provider specific delimiters.
         /// </summary>
         protected virtual IList<string> SplitSqlScript(string sqlScript)
-            => throw new NotSupportedException();
+        {
+            var delimiter = ";";
+            var canTerminateBatch = SqlBatchTerminator.HasValue();
+            var inMultilineComment = false;
+            var commands = new List<string>();
+            var command = string.Empty;
+            var lines = sqlScript.GetLines(true);
 
+            foreach (var line in lines)
+            {
+                // Ignore comments
+                var commandLine = ReadSqlCommandLine(line, ref inMultilineComment);
+                if (commandLine.IsEmpty())
+                {
+                    continue;
+                }
 
-        protected virtual Stream OpenBlobStreamCore(string tableName, string blobColumnName, string pkColumnName, object pkColumnValue)
-            => throw new NotSupportedException();
+                // In some DB systems (e.g. MySQL), you can change the delimiter using the DELIMITER statement.
+                // To handle this scenario, we need to track the current delimiter
+                // and change it whenever we encounter a DELIMITER statement
+                if (SqlSupportsDelimiterStatement && commandLine.StartsWithNoCase("DELIMITER"))
+                {
+                    delimiter = commandLine.Split(' ')[1].Trim();
+                    continue;
+                }
+
+                // MSSQL can terminate batches with the "GO" statement
+                var isBatchTerminator = canTerminateBatch && commandLine.EqualsNoCase(SqlBatchTerminator);
+
+                if (isBatchTerminator)
+                {
+                    if (command.HasValue())
+                    {
+                        commands.Add(command);
+                        command = string.Empty;
+                    }
+                }
+                else if (!commandLine.EndsWith(delimiter))
+                {
+                    command += commandLine + Environment.NewLine;
+                }
+                else
+                {
+                    command += commandLine[..^delimiter.Length];
+                    commands.Add(command.Trim());
+                    command = string.Empty;
+                }
+            }
+
+            if (command.Length > 0)
+            {
+                commands.Add(command.Trim());
+            }
+
+            return commands;
+        }
+
+        /// <summary>
+        /// Reads a single sql command line while skipping single- and multi-line comments.
+        /// </summary>
+        protected virtual string ReadSqlCommandLine(string line, ref bool inMultilineComment)
+        {
+            if (line.IsEmpty())
+            {
+                return line;
+            }
+
+            if (inMultilineComment)
+            {
+                var endCommentIndex = line.IndexOf("*/");
+                if (endCommentIndex > -1)
+                {
+                    inMultilineComment = false;
+                    line = line[(endCommentIndex + 2)..];
+                }
+                else
+                {
+                    line = string.Empty;
+                }
+            }
+
+            var singleLineCommentIndex = line.IndexOf("--");
+            if (singleLineCommentIndex > -1)
+            {
+                line = line[..singleLineCommentIndex];
+            }
+            else
+            {
+                singleLineCommentIndex = line.IndexOf('#');
+                if (singleLineCommentIndex > -1)
+                {
+                    line = line[..singleLineCommentIndex];
+                }
+            }
+
+            var startCommentIndex = line.IndexOf("/*");
+            if (startCommentIndex > -1)
+            {
+                var endCommentIndex = line.IndexOf("*/", startCommentIndex + 2);
+                if (endCommentIndex > -1)
+                {
+                    line = string.Concat(line.AsSpan(0, startCommentIndex), line.AsSpan(endCommentIndex + 2));
+                }
+                else
+                {
+                    inMultilineComment = true;
+                    line = line[..startCommentIndex];
+                }
+            }
+
+            return line.Trim();
+        }
 
         #endregion
 
@@ -416,16 +559,24 @@ namespace Smartstore.Data.Providers
             => GetDatabaseSizeCore(true);
 
         /// <summary>
-        /// Shrinks / compacts the database
+        /// Shrinks / compacts the database.
         /// </summary>
-        public int ShrinkDatabase()
-            => ShrinkDatabaseCore(false).Await();
+        /// <param name="onlyWhenFast">
+        /// If <c>true</c>, performs the shrink operation only if the underlying
+        /// data provider is capable of fast shrinking.
+        /// </param>
+        public int ShrinkDatabase(bool onlyWhenFast = true)
+            => ShrinkDatabaseCore(false, onlyWhenFast).Await();
 
         /// <summary>
-        /// Shrinks / compacts the database
+        /// Shrinks / compacts the database.
         /// </summary>
-        public Task<int> ShrinkDatabaseAsync(CancellationToken cancelToken = default)
-            => ShrinkDatabaseCore(true, cancelToken);
+        /// <param name="onlyWhenFast">
+        /// If <c>true</c>, performs the shrink operation only if the underlying
+        /// data provider is capable of fast shrinking.
+        /// </param>
+        public Task<int> ShrinkDatabaseAsync(bool onlyWhenFast = true, CancellationToken cancelToken = default)
+            => ShrinkDatabaseCore(true, onlyWhenFast, cancelToken);
 
         /// <summary>
         /// Reindexes all tables
@@ -438,6 +589,18 @@ namespace Smartstore.Data.Providers
         /// </summary>
         public Task<int> ReIndexTablesAsync(CancellationToken cancelToken = default)
             => ReIndexTablesCore(true, cancelToken);
+
+        /// <summary>
+        /// Reads info/statistics about every public table in the database.
+        /// </summary>
+        public List<DbTableInfo> ReadTableInfos()
+            => ReadTableInfosCore(false).Await();
+
+        /// <summary>
+        /// Reads info/statistics about every public table in the database.
+        /// </summary>
+        public Task<List<DbTableInfo>> ReadTableInfosAsync(CancellationToken cancelToken = default)
+            => ReadTableInfosCore(true, cancelToken);
 
         /// <summary>
         /// Executes a (multiline) sql script in an atomic transaction.
@@ -456,9 +619,19 @@ namespace Smartstore.Data.Providers
             Guard.NotEmpty(sqlScript);
 
             var sqlCommands = SplitSqlScript(sqlScript);
-            var rowsAffected = 0;
 
-            using var tx = async ? await Database.BeginTransactionAsync(cancelToken) : Database.BeginTransaction();
+            if (sqlCommands.Count == 0)
+            {
+                return 0;
+            }
+
+            var rowsAffected = 0;
+            var isInTransaction = Database.CurrentTransaction != null;
+
+            using var tx = isInTransaction
+                ? null
+                : (async ? await Database.BeginTransactionAsync(cancelToken) : Database.BeginTransaction());
+
             try
             {
                 foreach (var command in sqlCommands.Select(Sql))
@@ -466,26 +639,32 @@ namespace Smartstore.Data.Providers
                     rowsAffected += async ? await Database.ExecuteSqlRawAsync(command, cancelToken) : Database.ExecuteSqlRaw(command);
                 }
 
-                if (async)
+                if (!isInTransaction)
                 {
-                    await tx.CommitAsync(cancelToken);
-                }
-                else
-                {
-                    tx.Commit();
-                }
-                
+                    if (async)
+                    {
+                        await tx.CommitAsync(cancelToken);
+                    }
+                    else
+                    {
+                        tx.Commit();
+                    }
+                }            
             }
             catch
             {
-                if (async)
+                if (!isInTransaction)
                 {
-                    await tx.RollbackAsync(cancelToken);
+                    if (async)
+                    {
+                        await tx.RollbackAsync(cancelToken);
+                    }
+                    else
+                    {
+                        tx.Rollback();
+                    }
                 }
-                else
-                {
-                    tx.Rollback();
-                }
+
                 throw;
             }
 

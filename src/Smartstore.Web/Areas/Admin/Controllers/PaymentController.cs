@@ -47,7 +47,7 @@ namespace Smartstore.Admin.Controllers
         }
 
         [Permission(Permissions.Configuration.PaymentMethod.Read)]
-        public async Task<ActionResult> Providers()
+        public IActionResult Providers()
         {
             var paymentMethodsModel = new List<PaymentMethodModel>();
             var providers = _providerManager.GetAllProviders<IPaymentMethod>();
@@ -62,7 +62,7 @@ namespace Smartstore.Admin.Controllers
                 model.SupportPartiallyRefund = instance.SupportPartiallyRefund;
                 model.SupportRefund = instance.SupportRefund;
                 model.SupportVoid = instance.SupportVoid;
-                model.RecurringPaymentType = await instance.RecurringPaymentType.GetLocalizedEnumAsync();
+                model.RecurringPaymentType = instance.RecurringPaymentType.GetLocalizedEnum();
 
                 paymentMethodsModel.Add(model);
             }
@@ -157,11 +157,8 @@ namespace Smartstore.Admin.Controllers
             await _moduleManager.ApplySettingAsync(provider.Metadata, "FriendlyName", model.FriendlyName);
             await _moduleManager.ApplySettingAsync(provider.Metadata, "Description", model.Description);
 
-            var paymentMethod = await _db.PaymentMethods.FirstOrDefaultAsync(x => x.PaymentMethodSystemName == systemName);
-            if (paymentMethod == null)
-            {
-                paymentMethod = new PaymentMethod { PaymentMethodSystemName = systemName };
-            }
+            var paymentMethod = await _db.PaymentMethods.FirstOrDefaultAsync(x => x.PaymentMethodSystemName == systemName) 
+                ?? new PaymentMethod { PaymentMethodSystemName = systemName };
 
             paymentMethod.FullDescription = model.FullDescription;
             paymentMethod.RoundOrderTotalEnabled = model.RoundOrderTotalEnabled;

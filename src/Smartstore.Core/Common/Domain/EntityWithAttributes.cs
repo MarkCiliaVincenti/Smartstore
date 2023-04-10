@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
 using System.Runtime.Serialization;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Smartstore.Core.Common;
 using Smartstore.Core.Common.Services;
 
@@ -8,15 +7,6 @@ namespace Smartstore.Domain
 {
     public abstract class EntityWithAttributes : BaseEntity
     {
-        protected EntityWithAttributes()
-        {
-        }
-
-        protected EntityWithAttributes(ILazyLoader lazyLoader)
-            : base(lazyLoader)
-        {
-        }
-
         /// <summary>
         /// Gets a specialized generic attributes collection for the current entity.
         /// Loaded data will be cached for the duration of the request.

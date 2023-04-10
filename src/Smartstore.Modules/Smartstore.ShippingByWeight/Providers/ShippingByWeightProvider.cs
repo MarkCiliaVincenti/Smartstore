@@ -202,7 +202,8 @@ namespace Smartstore.Shipping
                 .Where(x => x.StoreId == storeId || x.StoreId == 0)
                 .ApplyWeightFilter(weight)
                 .ApplyRegionFilter(countryId, zip)
-                .OrderBy(x => x.From)
+                .OrderBy(x => x.CountryId != 0)
+                .ThenBy(x => x.From)
                 .ToListAsync();
 
             foreach (var shippingMethod in shippingMethods)

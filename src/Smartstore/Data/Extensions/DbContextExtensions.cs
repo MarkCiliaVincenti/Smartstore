@@ -9,7 +9,6 @@ using Smartstore.ComponentModel;
 using Smartstore.Data;
 using Smartstore.Domain;
 using Smartstore.Utilities;
-using EfState = Microsoft.EntityFrameworkCore.EntityState;
 
 namespace Smartstore
 {
@@ -84,23 +83,12 @@ namespace Smartstore
         }
 
         /// <summary>
-        /// Checks whether at least one entity in the change tracker is in <see cref="EfState.Added"/>, 
-        /// <see cref="EfState.Deleted"/> or <see cref="EfState.Modified"/> state.
-        /// </summary>
-        /// <param name="ctx"></param>
-        /// <returns></returns>
-        public static bool HasChanges(this HookingDbContext ctx)
-        {
-            return ctx.ChangeTracker.Entries().Where(x => x.State > EfState.Unchanged).Any();
-        }
-
-        /// <summary>
         /// Sets the state of an entity to <see cref="EfState.Modified"/> if it is detached.
         /// </summary>
         /// <typeparam name="TEntity">Type of entity</typeparam>
         /// <param name="entity">The entity instance</param>
         /// <returns><c>true</c> if the state has been changed, <c>false</c> if entity is attached already.</returns>
-        public static bool TryUpdate<TEntity>(this HookingDbContext ctx, TEntity entity) where TEntity : BaseEntity
+        public static bool TryUpdate<TEntity>(this DbContext ctx, TEntity entity) where TEntity : BaseEntity
         {
             var detectChanges = ctx.ChangeTracker.AutoDetectChangesEnabled;
             ctx.ChangeTracker.AutoDetectChangesEnabled = false;
@@ -120,7 +108,7 @@ namespace Smartstore
         /// <param name="entity">The entity instance</param>
         /// <param name="requestedState">The requested new state</param>
         /// <returns><c>true</c> if the state has been changed, <c>false</c> if current state did not differ from <paramref name="requestedState"/>.</returns>
-        public static bool TryChangeState<TEntity>(this HookingDbContext ctx, TEntity entity, EfState requestedState) where TEntity : BaseEntity
+        public static bool TryChangeState<TEntity>(this DbContext ctx, TEntity entity, EfState requestedState) where TEntity : BaseEntity
         {
             var detectChanges = ctx.ChangeTracker.AutoDetectChangesEnabled;
             ctx.ChangeTracker.AutoDetectChangesEnabled = false;
@@ -142,7 +130,7 @@ namespace Smartstore
         /// <returns><c>true</c> if property has changed, <c>false</c> otherwise</returns>
         public static bool TryGetModifiedProperty(this HookingDbContext ctx, BaseEntity entity, string propertyName, out object originalValue)
         {
-            Guard.NotNull(entity, nameof(entity));
+            Guard.NotNull(entity);
 
             if (entity.IsTransientRecord())
             {
@@ -175,7 +163,7 @@ namespace Smartstore
         /// </summary>
         /// <typeparam name="TEntity">Type of entity</typeparam>
         /// <param name="entity">The entity instance</param>
-        public static void ReloadEntity<TEntity>(this HookingDbContext ctx, TEntity entity) where TEntity : BaseEntity
+        public static void ReloadEntity<TEntity>(this DbContext ctx, TEntity entity) where TEntity : BaseEntity
         {
             ctx.Entry((object)entity).ReloadEntity();
         }
@@ -186,7 +174,7 @@ namespace Smartstore
         /// </summary>
         /// <typeparam name="TEntity">Type of entity</typeparam>
         /// <param name="entity">The entity instance</param>
-        public static Task ReloadEntityAsync<TEntity>(this HookingDbContext ctx, TEntity entity, CancellationToken cancelToken = default) where TEntity : BaseEntity
+        public static Task ReloadEntityAsync<TEntity>(this DbContext ctx, TEntity entity, CancellationToken cancelToken = default) where TEntity : BaseEntity
         {
             return ctx.Entry((object)entity).ReloadEntityAsync(cancelToken);
         }
@@ -240,7 +228,7 @@ namespace Smartstore
         /// <returns>The count of detached entities</returns>
         public static int DetachEntities(this HookingDbContext ctx, Func<BaseEntity, bool> predicate, bool unchangedEntitiesOnly = true, bool deep = false)
         {
-            Guard.NotNull(predicate, nameof(predicate));
+            Guard.NotNull(predicate);
 
             var numDetached = 0;
 
@@ -350,8 +338,8 @@ namespace Smartstore
             where TEntity : BaseEntity
             where TCollection : BaseEntity
         {
-            Guard.NotNull(entity, nameof(entity));
-            Guard.NotNull(navigationProperty, nameof(navigationProperty));
+            Guard.NotNull(entity);
+            Guard.NotNull(navigationProperty);
 
             collectionEntry = null;
             if (entity.Id == 0)
@@ -459,8 +447,8 @@ namespace Smartstore
             where TEntity : BaseEntity
             where TCollection : BaseEntity
         {
-            Guard.NotNull(entity, nameof(entity));
-            Guard.NotNull(navigationProperty, nameof(navigationProperty));
+            Guard.NotNull(entity);
+            Guard.NotNull(navigationProperty);
 
             if (entity.Id == 0)
             {
@@ -549,8 +537,8 @@ namespace Smartstore
             where TEntity : BaseEntity
             where TProperty : BaseEntity
         {
-            Guard.NotNull(entity, nameof(entity));
-            Guard.NotNull(navigationProperty, nameof(navigationProperty));
+            Guard.NotNull(entity);
+            Guard.NotNull(navigationProperty);
 
             if (entity.Id == 0)
             {

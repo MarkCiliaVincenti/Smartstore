@@ -17,8 +17,8 @@ using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Catalog.Products.Utilities;
 using Smartstore.Core.Catalog.Search;
 using Smartstore.Core.Checkout.Cart;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Common.Services;
-using Smartstore.Core.Common.Settings;
 using Smartstore.Core.Content.Media;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Localization;
@@ -498,21 +498,23 @@ namespace Smartstore.Admin.Controllers
 
             if (sku.HasValue())
             {
-                var product = await _db.Products
+                var products = await _db.Products
                     .IgnoreQueryFilters()
                     .ApplySkuFilter(sku)
                     .Select(x => new { x.Id, x.Deleted })
-                    .FirstOrDefaultAsync();
+                    .OrderBy(x => x.Id)
+                    .ToListAsync();
 
-                if (product != null)
+                if (products.Count > 0)
                 {
-                    if (product.Deleted)
+                    var notDeleted = products.FirstOrDefault(x => !x.Deleted);
+                    if (notDeleted != null)
                     {
-                        NotifyWarning(T("Products.Deleted", product.Id));
+                        return RedirectToAction(nameof(Edit), new { id = notDeleted.Id });
                     }
                     else
                     {
-                        return RedirectToAction(nameof(Edit), new { id = product.Id });
+                        NotifyWarning(T("Products.Deleted", products[0].Id));
                     }
                 }
                 else
@@ -559,6 +561,7 @@ namespace Smartstore.Admin.Controllers
                 // Lets just load this untracked as nearly all navigation properties are needed in order to copy successfully.
                 // We just eager load the most common properties.
                 var product = await _db.Products
+                    .AsSplitQuery()
                     .Include(x => x.ProductCategories)
                     .Include(x => x.ProductManufacturers)
                     .Include(x => x.ProductSpecificationAttributes)
@@ -1023,7 +1026,6 @@ namespace Smartstore.Admin.Controllers
         [Permission(Permissions.Catalog.Product.EditTierPrice)]
         public async Task<IActionResult> TierPriceList(GridCommand command, int productId)
         {
-            var model = new GridModel<ProductModel.TierPriceModel>();
             var tierPrices = await _db.TierPrices
                 .Where(x => x.ProductId == productId)
                 .ApplyGridCommand(command)
@@ -1107,8 +1109,11 @@ namespace Smartstore.Admin.Controllers
                 })
                 .ToList();
 
-            model.Rows = tierPricesModel;
-            model.Total = tierPrices.TotalCount;
+            var model = new GridModel<ProductModel.TierPriceModel>
+            {
+                Rows = tierPricesModel,
+                Total = tierPrices.TotalCount
+            };
 
             return Json(model);
         }
@@ -1546,7 +1551,7 @@ namespace Smartstore.Admin.Controllers
                         {
                             var store = Services.StoreContext.GetStoreById(storeMapping.StoreId);
                             if (store != null)
-                                model.ProductUrl = store.Url.EnsureEndsWith("/") + await product.GetActiveSlugAsync();
+                                model.ProductUrl = store.Url.EnsureEndsWith('/') + await product.GetActiveSlugAsync();
                         }
                     }
                 }

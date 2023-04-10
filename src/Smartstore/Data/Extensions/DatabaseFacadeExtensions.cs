@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Smartstore.ComponentModel;
+using Smartstore.Utilities;
 
 namespace Smartstore
 {
@@ -23,10 +24,9 @@ namespace Smartstore
         /// </returns>
         public static bool EnsureCreatedSchemaless(this DatabaseFacade databaseFacade)
         {
-            Guard.NotNull(databaseFacade, nameof(databaseFacade));
+            Guard.NotNull(databaseFacade);
 
-            var creator = GetFacadeDependencies(databaseFacade).DatabaseCreator as RelationalDatabaseCreator;
-            if (creator != null)
+            if (GetFacadeDependencies(databaseFacade).DatabaseCreator is RelationalDatabaseCreator creator)
             {
                 using (new TransactionScope(TransactionScopeOption.Suppress, TransactionScopeAsyncFlowOption.Enabled))
                 {
@@ -301,7 +301,11 @@ namespace Smartstore
 
                     if (fastProps.TryGetValue(columnName, out var prop))
                     {
-                        prop.SetValue(obj, reader.GetValue(i));
+                        var value = reader.GetValue(i);
+                        if (ConvertUtility.TryConvert(value, prop.Property.PropertyType, out var converted))
+                        {
+                            prop.SetValue(obj, converted);
+                        }
                     }
                 }
             }
@@ -324,14 +328,9 @@ namespace Smartstore
 
         internal static TService GetRelationalService<TService>(this IInfrastructure<IServiceProvider> databaseFacade)
         {
-            Guard.NotNull(databaseFacade, nameof(databaseFacade));
+            Guard.NotNull(databaseFacade);
 
-            var service = databaseFacade.Instance.GetService<TService>();
-            if (service == null)
-            {
-                throw new InvalidOperationException(RelationalStrings.RelationalNotInUse);
-            }
-
+            var service = databaseFacade.Instance.GetService<TService>() ?? throw new InvalidOperationException(RelationalStrings.RelationalNotInUse);
             return service;
         }
     }

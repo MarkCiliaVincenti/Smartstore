@@ -17,7 +17,7 @@ namespace Smartstore.Core.Content.Media
 
         public async Task<MediaFolderInfo> CreateFolderAsync(string path)
         {
-            Guard.NotEmpty(path, nameof(path));
+            Guard.NotEmpty(path);
 
             path = FolderService.NormalizePath(path, false);
             ValidateFolderPath(path, "CreateFolder", nameof(path));
@@ -146,7 +146,7 @@ namespace Smartstore.Core.Content.Media
             ValidateFolderPath(path, "CopyFolder", nameof(path));
 
             destinationPath = FolderService.NormalizePath(destinationPath);
-            if (destinationPath.EnsureEndsWith("/").StartsWith(path.EnsureEndsWith("/")))
+            if (destinationPath.EnsureEndsWith('/').StartsWith(path.EnsureEndsWith('/')))
             {
                 throw new ArgumentException(T("Admin.Media.Exception.DescendantFolder", destinationPath, path), nameof(destinationPath));
             }
@@ -250,7 +250,7 @@ namespace Smartstore.Core.Content.Media
                         false /* copyData */,
                         dupeEntryHandling,
                         () => Task.FromResult(destFiles?.Get(file.Name)),
-                        p => UniqueFileNameChecker(p));
+                        UniqueFileNameChecker);
 
                     if (copyResult.Copy != null)
                     {

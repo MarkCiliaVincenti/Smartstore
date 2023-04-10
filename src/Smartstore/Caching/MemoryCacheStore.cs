@@ -1,13 +1,12 @@
-﻿using System.Collections;
-using System.Text.RegularExpressions;
-
+﻿using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore.Infrastructure.Internal;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using Smartstore.Collections;
-using Smartstore.Data;
+using Smartstore.ComponentModel;
 using Smartstore.Domain;
 using Smartstore.Events;
 using Smartstore.Threading;
@@ -147,7 +146,7 @@ namespace Smartstore.Caching
         {
             _keys.Add((string)entry.Key);
 
-            TryDropLazyLoader(item.Value);
+            TryCallEventAndValidateObject(item.Value);
 
             entry.SetValue(item);
             entry.SetPriority((CacheItemPriority)item.Priority);
@@ -172,7 +171,7 @@ namespace Smartstore.Caching
             {
                 // INFO: we can only depend on existing items, otherwise this entry will be removed immediately.
                 var dependantEntries = item.Dependencies
-                    .Select(x => _cache.Get<CacheEntry>(x))
+                    .Select(_cache.Get<CacheEntry>)
                     .Where(x => x != null)
                     .ToArray();
 
@@ -185,7 +184,7 @@ namespace Smartstore.Caching
             // Ensure that when this item is expired, any objects depending on the token are also expired
             entry.RegisterPostEvictionCallback((object key, object value, EvictionReason reason, object state) =>
             {
-                var entry = (value as CacheEntry);
+                var entry = value as CacheEntry;
 
                 if (reason != EvictionReason.Replaced)
                 {
@@ -203,6 +202,11 @@ namespace Smartstore.Caching
                     }
                 }
 
+                if (entry.Value is ICacheEvents cacheEvents)
+                {
+                    cacheEvents.OnRemoved(this, (CacheEntryRemovedReason)reason);
+                }
+
                 Removed?.Invoke(this, new CacheEntryRemovedEventArgs
                 {
                     Key = (string)key,
@@ -214,17 +218,77 @@ namespace Smartstore.Caching
             entry.Dispose();
         }
 
-        internal static void TryDropLazyLoader(object value)
+        private static void TryCallEventAndValidateObject(object value)
         {
+            if (value is null)
+            {
+                return;
+            }
+            else if (value is ICacheEvents cacheEvents)
+            {
+                cacheEvents.OnCache();
+            }
+            else if (value is IEnumerable<ICacheEvents> eventsCollection)
+            {
+                foreach (var obj in eventsCollection)
+                {
+                    obj.OnCache();
+                }
+            }
+
             if (value is BaseEntity entity)
             {
-                entity.LazyLoader = NullLazyLoader.Instance;
+                CheckLazyLoader(entity, new HashSet<BaseEntity>());
             }
-            else if (value is IEnumerable e)
+            else if (value is IEnumerable<BaseEntity> entityCollection)
             {
-                foreach (var item in e.OfType<BaseEntity>())
+                var processed = new HashSet<BaseEntity>();
+                foreach (var obj in entityCollection)
                 {
-                    item.LazyLoader = NullLazyLoader.Instance;
+                    CheckLazyLoader(obj, processed);
+                }
+            }
+
+            static void CheckLazyLoader(BaseEntity entity, ISet<BaseEntity> processed)
+            {
+                if (entity == null)
+                {
+                    return;
+                }
+
+                // This is to prevent an infinite recursion when the child object has a navigation property
+                // that points back to the parent
+                if (!processed.Add(entity))
+                {
+                    return;
+                }
+
+                if (entity.LazyLoader is LazyLoader)
+                {
+                    throw new InvalidOperationException("Saving tracked entities to memory cache is not allowed because it would most likely cause memory leaks.");
+                }
+
+                // Check deep
+                var fastProps = FastProperty.GetProperties(entity.GetType());
+                foreach (var kvp in fastProps)
+                {
+                    var prop = kvp.Value.Property;
+
+                    if (typeof(BaseEntity).IsAssignableFrom(prop.PropertyType))
+                    {
+                        CheckLazyLoader(prop.GetValue(entity) as BaseEntity, processed);
+                    }
+                    else if (typeof(IEnumerable<BaseEntity>).IsAssignableFrom(prop.PropertyType))
+                    {
+                        var val = prop.GetValue(entity);
+                        if (val is IEnumerable<BaseEntity> collection)
+                        {
+                            foreach (var obj in collection)
+                            {
+                                CheckLazyLoader(obj, processed);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -289,10 +353,8 @@ namespace Smartstore.Caching
         public virtual void Clear()
         {
             _keys.Clear();
+            _cache.Clear();
 
-            // Faster way of clearing cache: https://stackoverflow.com/questions/8043381/how-do-i-clear-a-system-runtime-caching-memorycache
-            var oldCache = Interlocked.Exchange(ref _cache, CreateCache());
-            oldCache.Dispose();
             GC.Collect();
         }
 

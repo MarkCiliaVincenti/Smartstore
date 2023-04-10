@@ -6,8 +6,6 @@ using Smartstore.Net.Mail;
 
 namespace Smartstore.Core.Messaging
 {
-    // TODO: (mg) (core) remove required attribute at EmailAccount.Username and EmailAccount.Password later (migration required).
-
     /// <summary>
     /// Represents an email account.
     /// </summary>
@@ -40,19 +38,32 @@ namespace Smartstore.Core.Messaging
         /// <summary>
         /// Gets or sets an email user name.
         /// </summary>
-        [Required, StringLength(255)]
+        [StringLength(255)]
         public string Username { get; set; }
 
         /// <summary>
         /// Gets or sets an email password.
         /// </summary>
-        [Required, StringLength(255)]
+        [StringLength(255)]
         public string Password { get; set; }
 
-        /// <summary>
-        /// Gets or sets a value that controls whether the SmtpClient uses Secure Sockets Layer (SSL) to encrypt the connection.
-        /// </summary>
+        [Obsolete("Use SecureOption instead.")]
         public bool EnableSsl { get; set; }
+
+        /// <summary>
+        /// Gets or sets the option value for SSL and/or TLS encryption to use.
+        /// </summary>
+        public int SecureOption { get; set; }
+
+        /// <summary>
+        /// Gets or sets an option for SSL and/or TLS encryption to use.
+        /// </summary>
+        [NotMapped]
+        public MailSecureOption MailSecureOption
+        {
+            get => (MailSecureOption)SecureOption;
+            set => SecureOption = (int)value;
+        }
 
         /// <summary>
         /// Gets or sets a value that controls whether the default system credentials of the application are sent with requests.
@@ -75,13 +86,9 @@ namespace Smartstore.Core.Messaging
         }
 
         public EmailAccount Clone()
-        {
-            return (EmailAccount)this.MemberwiseClone();
-        }
+            => (EmailAccount)MemberwiseClone();
 
         object ICloneable.Clone()
-        {
-            return this.MemberwiseClone();
-        }
+            => MemberwiseClone();
     }
 }

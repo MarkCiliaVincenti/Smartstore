@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Template;
@@ -22,6 +23,14 @@ namespace Smartstore.Core.Content.Media
     {
         const string IdToken = "id";
         const string PathToken = "path";
+
+        private readonly RateLimiter _logRateLimiter = new SlidingWindowRateLimiter(new SlidingWindowRateLimiterOptions
+        {
+            QueueLimit = 1,
+            Window = TimeSpan.FromHours(1),
+            SegmentsPerWindow = 10,
+            PermitLimit = 50
+        });
 
         private readonly RequestDelegate _next;
         private readonly IApplicationContext _appContext;
@@ -198,6 +207,17 @@ namespace Smartstore.Core.Content.Media
                 // A look at the MVC source code reveals that HttpContext is the only property that gets accessed, therefore we can omit 
                 // all the other stuff like ActionDescriptor or ModelState (which we cannot access or create from a middleware anyway).
                 await fileResult.ExecuteResultAsync(new ActionContext { HttpContext = context, RouteData = context.GetRouteData() });
+            }
+            catch (MediaFileNotFoundException ex)
+            {
+                // Log
+                using var logLease = _logRateLimiter.AttemptAcquire();
+                if (logLease.IsAcquired)
+                {
+                    logger.Error(ex);
+                }
+
+                await NotFound(pathData.MimeType);
             }
             finally
             {

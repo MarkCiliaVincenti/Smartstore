@@ -40,9 +40,28 @@
         public int DbContextPoolSize { get; set; } = 1024;
 
         /// <summary>
+        /// Enables pooling for <see cref="Microsoft.EntityFrameworkCore.IDbContextFactory{TContext}"/>.
+        /// </summary>
+        public bool UsePooledDbContextFactory { get; set; }
+
+        /// <summary>
         /// The default schema to use for database objects. Set <c>null</c> to use database default schema (e.g. "dbo").
         /// </summary>
         public string DbDefaultSchema { get; set; }
+
+        /// <summary>
+        /// Enabled second level database cache.
+        /// </summary>
+        public bool UseDbCache { get; set; }
+
+        /// <summary>
+        /// If <c>true</c>, optimizes a <see cref="Microsoft.EntityFrameworkCore.DbContext"/> for
+        /// accessing large columns (text, ntext, varchar(max) and nvarchar(max)). It enables the
+        /// "SequentialAccess" option and uses an optimized method
+        /// for converting large text columns into <see cref="string"/> objects.
+        /// Default is <c>false</c>.
+        /// </summary>
+        public bool UseSequentialDbDataReader { get; set; }
 
         /// <summary>
         /// Storage path for media files and assets like thumbs, uploads, email attachments etc.
@@ -79,7 +98,7 @@
 
         /// <summary>
         /// Set this to your store's task scheduler base url
-        /// when the automatic url resolution fails (e.g. 'http://www.mystore.com/taskscheduler')
+        /// when the automatic url resolution fails (e.g. 'http://www.mystore.com')
         /// </summary>
         public string TaskSchedulerBaseUrl { get; set; }
 

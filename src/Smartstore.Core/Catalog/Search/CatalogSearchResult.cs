@@ -5,10 +5,12 @@ using Smartstore.Core.Search.Facets;
 
 namespace Smartstore.Core.Catalog.Search
 {
-    public partial class CatalogSearchResult
+    public partial class CatalogSearchResult : Disposable
     {
-        private readonly DbSet<Product> _dbSet;
         private IPagedList<Product> _hits;
+
+        private readonly WeakReference<CatalogSearchQuery> _query;
+        private readonly WeakReference<DbSet<Product>> _dbSet;
 
         /// <summary>
         /// Constructor to get an instance without any search hits.
@@ -28,21 +30,40 @@ namespace Smartstore.Core.Catalog.Search
             string[] spellCheckerSuggestions,
             IDictionary<string, FacetGroup> facets)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
+
+            _query = new WeakReference<CatalogSearchQuery>(query);
+            _dbSet = new WeakReference<DbSet<Product>>(dbSet);
 
             Engine = engine;
-            Query = query;
-            _dbSet = dbSet;
             TotalHitsCount = totalHitsCount;
             HitsEntityIds = hitsEntityIds ?? Array.Empty<int>();
             SpellCheckerSuggestions = spellCheckerSuggestions ?? Array.Empty<string>();
             Facets = facets ?? new Dictionary<string, FacetGroup>();
         }
 
+        private DbSet<Product> DbSet
+        {
+            get
+            {
+                _dbSet.TryGetTarget(out var dbSet);
+                return dbSet;
+            }
+        }
+
         /// <summary>
         /// The original catalog search query.
         /// </summary>
-        public CatalogSearchQuery Query { get; }
+        public CatalogSearchQuery Query 
+        { 
+            get
+            {
+                _query.TryGetTarget(out var query);
+                return query;
+            }
+        }
+
+        public ISearchEngine Engine { get; }
 
         /// <summary>
         /// Entity identifiers of found products.
@@ -58,8 +79,6 @@ namespace Smartstore.Core.Catalog.Search
 
         public IDictionary<string, FacetGroup> Facets { get; }
 
-        public ISearchEngine Engine { get; }
-
         /// <summary>
         /// Gets the product hits. Once loaded, the result is cached so that
         /// subsequent calls to this method do not hit the database again.
@@ -68,14 +87,24 @@ namespace Smartstore.Core.Catalog.Search
         {
             if (_hits == null)
             {
-                var products = TotalHitsCount > 0 && _dbSet != null && Query.GetHitsFactory() != null
-                    ? await Query.GetHitsFactory().Invoke(_dbSet, HitsEntityIds)
+                var dbSet = DbSet;
+                var query = Query;
+                var products = TotalHitsCount > 0 && dbSet != null && query.GetHitsFactory() != null
+                    ? await query.GetHitsFactory().Invoke(dbSet, HitsEntityIds)
                     : Enumerable.Empty<Product>();
 
-                _hits = products.ToPagedList(Query.PageIndex, Query.Take, TotalHitsCount);
+                _hits = products.ToPagedList(query.PageIndex, query.Take, TotalHitsCount);
             }
 
             return _hits;
+        }
+
+        protected override void OnDispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _hits?.Clear();
+            }
         }
     }
 }

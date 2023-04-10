@@ -1,5 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Smartstore.Collections;
+﻿using Smartstore.Collections;
 using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Catalog.Brands;
 using Smartstore.Core.Catalog.Categories;
@@ -297,6 +296,7 @@ namespace Smartstore.Core.Catalog.Products
             var associatedProducts = await _db.Products
                 .AsNoTracking()
                 .ApplyAssociatedProductsFilter(ids, _includeHidden)
+                .SelectSummary()
                 .ToListAsync();
 
             return associatedProducts.ToMultimap(x => x.ParentGroupedProductId, x => x);

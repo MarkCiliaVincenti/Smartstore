@@ -63,6 +63,8 @@
             var min = $input.attr("min");
             var max = $input.attr("max");
             var step = $input.attr("step");
+            var invariant = $input.data("invariant");
+
             min = isNaN(min) || min === "" ? -Infinity : parseFloat(min);
             max = isNaN(max) || max === "" ? Infinity : parseFloat(max);
             step = parseFloat(step) || 1;
@@ -70,7 +72,7 @@
             var decimals = parseInt($input.data("decimals")) || 0;
             var value = parseFloat($input[0].value);
 
-            updateDisplay(value);
+            updateDisplay(value, invariant);
 
             this.destroy = function() {
                 $group.removeClass("numberinput-initialized");
@@ -85,7 +87,7 @@
                 var newValue = parseValue($input[0].value);
                 var focusOut = e.type === "focusout";
                 setValue(newValue, focusOut);
-                updateDisplay(newValue);
+                updateDisplay(newValue, invariant);
             });
 
             if (props.autoSelect) {
@@ -123,12 +125,12 @@
                     : parseInt(customFormat);
             }
 
-            function renderValue(number) {
+            function renderValue(number, invariant) {
                 let minDigits = Math.min(culture.numberFormat.decimals, decimals);
                 let numberFormat = new Intl.NumberFormat(culture.name, {
                     minimumFractionDigits: minDigits,
                     maximumFractionDigits: Math.max(minDigits, decimals),
-                    useGrouping: true
+                    useGrouping: !invariant
                 });
                 return numberFormat.format(number);
             }
@@ -194,8 +196,8 @@
                 }
             }
 
-            function updateDisplay(newValue) {
-                let text = isNaN(newValue) ? "" : renderValue(newValue);
+            function updateDisplay(newValue, invariant) {
+                let text = isNaN(newValue) ? "" : renderValue(newValue, invariant);
                 $formatted.text(text);
             }
 

@@ -11,7 +11,7 @@ using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Checkout.Shipping;
 using Smartstore.Core.Checkout.Tax;
 using Smartstore.Core.Common;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Configuration;
 using Smartstore.Core.DataExchange;
 using Smartstore.Core.Identity;
@@ -942,8 +942,6 @@ namespace Smartstore.Core.Data.Migrations
 
         private static Dictionary<string, string> GetEnumNameMap()
         {
-            // TODO: (mh) (core) Add missing enum localization map entries when they are available.
-            // TODO: (mh) (core) Assign an alias names to enums in plugins if enum name is too generic.
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["SmartStore.Core.Domain.Catalog.AttributeControlType"] = nameof(AttributeControlType),

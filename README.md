@@ -32,11 +32,12 @@ A comprehensive set of tools for CRM & CMS, Sales, Marketing, Payment & Shipping
 
 The state-of-the-art architecture of Smartstore - with `ASP.NET Core 7`, `Entity Framework Core 7` and Domain Driven Design approach - makes it easy to extend, extremely flexible and basically fun to work with ;-)
 
-* :house: **Website:** [http://www.smartstore.com/en/net](http://www.smartstore.com/en/net)
+* :house: **Website:** [http://www.smartstore.com](http://www.smartstore.com)
 * :speech_balloon: **Forum:** [http://community.smartstore.com](http://community.smartstore.com)
 * :mega: **Marketplace:** [http://community.smartstore.com/marketplace](http://community.smartstore.com/marketplace)
 * :earth_americas: **Translations:** [http://translate.smartstore.com/](http://translate.smartstore.com/)
 * :blue_book: **Documentation:** [Smartstore Documentation in English](https://smartstore.atlassian.net/wiki/spaces/SMNET50/pages/1956118583/Getting+Started)
+* ▶️ **Azure Marketplace:** [https://azuremarketplace.microsoft.com](https://azuremarketplace.microsoft.com/marketplace/apps/smartstore-ag.smartstorenet?tab=Overview)
 <p>&nbsp;</p>
 
 ## Technology & Design
@@ -96,11 +97,19 @@ The state-of-the-art architecture of Smartstore - with `ASP.NET Core 7`, `Entity
 
 ### System requirements
 
+#### Supported operating systems
+
 * Windows 10 (or higher) / Windows Server 2012 R2 (or higher)
 * Ubuntu 14.04+
 * Debian 11+
 * Mac OS X 10.11+
-* MS SQL Server 2008 Express (or higher), MySQL
+
+#### Supported database systems
+
+- Microsoft SQL Server 2008 Express (or higher)
+- MySQL 8.0+
+- PostgreSQL 11+
+- SQLite 3.31+
 
 ### Upgrade from Smartstore.NET 4.2
 

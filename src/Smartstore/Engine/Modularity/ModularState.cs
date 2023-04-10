@@ -109,8 +109,7 @@ namespace Smartstore.Engine.Modularity
             {
                 var content = file.ReadAllText();
                 var lines = content.GetLines(true, true)
-                    .Select(x => isLegacy ? x.Replace("SmartStore", "Smartstore") : x)
-                    .Select(x => isLegacy ? x.Replace("GoogleAnalytics", "Google.Analytics") : x);
+                    .Select(x => isLegacy ? MapLegacyModuleName(x) : x);
 
                 if (isLegacy)
                 {
@@ -130,6 +129,31 @@ namespace Smartstore.Engine.Modularity
                 var content = file.ReadAllText();
                 _pendingModules.AddRange(content.GetLines(true, true));
             }
+        }
+
+        private static string MapLegacyModuleName(string moduleName)
+        {
+            moduleName = moduleName.Replace("SmartStore", "Smartstore");
+
+            var map = new List<(string, string)>
+            { 
+                ("GoogleAnalytics", "Google.Analytics"),
+                ("GoogleMerchantCenter", "Google.MerchantCenter"),
+                ("GoogleRemarketing", "Google.Remarketing"),
+                ("FacebookAuth", "Facebook.Auth"),
+                ("TwitterAuth", "Twitter.Auth"),
+            };
+
+            foreach (var kvp in map)
+            {
+                if (moduleName.Contains(kvp.Item1))
+                {
+                    moduleName = moduleName.Replace(kvp.Item1, kvp.Item2);
+                    continue;
+                }
+            }
+            
+            return moduleName;
         }
 
         public void Save()

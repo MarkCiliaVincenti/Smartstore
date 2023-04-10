@@ -1,12 +1,11 @@
 ﻿using System.Data;
 using Autofac;
-
 using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Catalog.Categories;
 using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Checkout.Attributes;
 using Smartstore.Core.Checkout.Cart;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Content.Menus;
 using Smartstore.Core.Content.Topics;
 using Smartstore.Core.DataExchange.Export;

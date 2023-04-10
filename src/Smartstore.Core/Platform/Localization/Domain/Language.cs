@@ -1,7 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.Runtime.Serialization;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -27,18 +25,8 @@ namespace Smartstore.Core.Localization
     [DebuggerDisplay("{LanguageCulture}")]
     [Index(nameof(DisplayOrder), Name = "IX_Language_DisplayOrder")]
     [CacheableEntity]
-    public partial class Language : EntityWithAttributes, IStoreRestricted
+    public partial class Language : EntityWithAttributes, ILanguage, IStoreRestricted
     {
-        public Language()
-        {
-        }
-
-        [SuppressMessage("CodeQuality", "IDE0051:Remove unused private member.", Justification = "Required for EF lazy loading")]
-        private Language(ILazyLoader lazyLoader)
-            : base(lazyLoader)
-        {
-        }
-
         /// <summary>
         /// Gets or sets the name
         /// </summary>
@@ -92,23 +80,6 @@ namespace Smartstore.Core.Localization
         {
             get => _localeStringResources ?? LazyLoader.Load(this, ref _localeStringResources) ?? (_localeStringResources ??= new HashSet<LocaleStringResource>());
             protected set => _localeStringResources = value;
-        }
-
-        public string GetTwoLetterISOLanguageName()
-        {
-            if (UniqueSeoCode.HasValue())
-            {
-                return UniqueSeoCode;
-            }
-
-            try
-            {
-                return new CultureInfo(LanguageCulture).TwoLetterISOLanguageName;
-            }
-            catch
-            {
-                return null;
-            }
         }
     }
 }

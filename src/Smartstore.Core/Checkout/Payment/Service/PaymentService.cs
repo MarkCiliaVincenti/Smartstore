@@ -1,5 +1,4 @@
-﻿
-using Smartstore.Caching;
+﻿using Smartstore.Caching;
 using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Checkout.Cart;
 using Smartstore.Core.Checkout.Orders;
@@ -207,7 +206,9 @@ namespace Smartstore.Core.Checkout.Payment
             {
                 return await _db.PaymentMethods
                     .AsNoTracking()
+                    .AsSplitQuery()
                     .Include(x => x.RuleSets)
+                    .ThenInclude(x => x.Rules)
                     .ApplyStoreFilter(storeId)
                     .ToDictionaryAsync(x => x.PaymentMethodSystemName.EmptyNull(), x => x, StringComparer.OrdinalIgnoreCase);
             });

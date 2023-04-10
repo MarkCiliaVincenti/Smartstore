@@ -134,7 +134,7 @@ namespace Smartstore.Web.Controllers
 
         public virtual Task<ProductSummaryModel> MapProductSummaryModelAsync(IList<Product> products, ProductSummaryMappingSettings settings)
         {
-            Guard.NotNull(products, nameof(products));
+            Guard.NotNull(products);
 
             return MapProductSummaryModelAsync(products.ToPagedList(0, int.MaxValue), settings);
         }
@@ -151,7 +151,7 @@ namespace Smartstore.Web.Controllers
 
         public virtual async Task<ProductSummaryModel> MapProductSummaryModelAsync(IPagedList<Product> products, CatalogSearchResult sourceResult, ProductSummaryMappingSettings settings)
         {
-            Guard.NotNull(products, nameof(products));
+            Guard.NotNull(products);
 
             if (settings == null)
             {
@@ -219,7 +219,7 @@ namespace Smartstore.Web.Controllers
                     { "Products.DimensionsValue", T("Products.DimensionsValue") },
                     { "Common.AdditionalShippingSurcharge", T("Common.AdditionalShippingSurcharge") }
                 };
-
+                
                 if (settings.MapLegalInfo)
                 {
                     var shippingInfoUrl = await _urlHelper.TopicAsync("shippinginfo");
@@ -473,10 +473,8 @@ namespace Smartstore.Web.Controllers
 
                 ctx.MediaFiles.TryGetValue(product.MainPictureId ?? 0, out var file);
 
-                item.Image = new ImageModel
+                item.Image = new ImageModel(file, thumbSize)
                 {
-                    File = file,
-                    ThumbSize = thumbSize,
                     Title = file?.File?.GetLocalized(x => x.Title)?.Value.NullEmpty() ?? string.Format(ctx.Resources["Media.Product.ImageLinkTitleFormat"], item.Name),
                     Alt = file?.File?.GetLocalized(x => x.Alt)?.Value.NullEmpty() ?? string.Format(ctx.Resources["Media.Product.ImageAlternateTextFormat"], item.Name),
                     NoFallback = _catalogSettings.HideProductDefaultPictures

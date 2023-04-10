@@ -11,6 +11,7 @@ using Smartstore.Data.Caching;
 using Smartstore.Data.Hooks;
 using Smartstore.Diagnostics;
 using Smartstore.Events;
+using Smartstore.Utilities;
 
 namespace Smartstore.Core.Identity
 {
@@ -104,11 +105,11 @@ namespace Smartstore.Core.Identity
             return customer;
         }
 
-        public virtual Task<Customer> FindGuestCustomerByClientIdentAsync(string clientIdent = null, int maxAgeSeconds = 60)
+        public virtual async Task<Customer> FindGuestCustomerByClientIdentAsync(string clientIdent = null, int maxAgeSeconds = 60)
         {
             if (_httpContextAccessor.HttpContext == null || _userAgent.IsBot || _userAgent.IsPdfConverter)
             {
-                return Task.FromResult<Customer>(null);
+                return null;
             }
 
             using (_chronometer.Step("FindGuestCustomerByClientIdent"))
@@ -116,26 +117,29 @@ namespace Smartstore.Core.Identity
                 clientIdent = clientIdent.NullEmpty() ?? _webHelper.GetClientIdent();
                 if (clientIdent.IsEmpty())
                 {
-                    return Task.FromResult<Customer>(null);
+                    return null;
+                }
+
+                var customerId = await _db.GenericAttributes
+                    .Where(a => a.Key == "ClientIdent" && a.KeyGroup == "Customer" && a.Value == clientIdent)
+                    .Select(a => a.EntityId)
+                    .FirstOrDefaultAsync();
+
+                if (customerId == 0)
+                {
+                    return null;
                 }
 
                 var dateFrom = DateTime.UtcNow.AddSeconds(-maxAgeSeconds);
 
-                var query = from a in _db.GenericAttributes.AsNoTracking()
-                            join c in _db.Customers on a.EntityId equals c.Id into Customers
-                            from c in Customers.DefaultIfEmpty()
-                            where c.LastActivityDateUtc >= dateFrom
-                                && c.Username == null
-                                && c.Email == null
-                                && a.KeyGroup == "Customer"
-                                && a.Key == "ClientIdent"
-                                && a.Value == clientIdent
-                            select c;
-
-                return query
+                var customer = await _db.Customers
+                    .Where(c => c.Id == customerId && c.Username == null && c.Email == null && c.LastActivityDateUtc >= dateFrom)
                     .IncludeCustomerRoles()
-                    .IncludeShoppingCart()
+                    // Disabled because of SqlClient "Deadlock" exception (?)
+                    //.IncludeShoppingCart()
                     .FirstOrDefaultAsync();
+
+                return customer;
             }
         }
 
@@ -180,38 +184,43 @@ namespace Smartstore.Core.Identity
             var customerIdsQuery = message.Query
                 .OrderBy(x => x.Id)
                 .Select(x => x.Id)
-                .Take(20000);
+                .Take(5000);
 
-            // Delete generic attributes.
             while (true)
             {
-                var numDeleted = await _db.GenericAttributes
-                    .IgnoreQueryFilters()
-                    .Where(x => customerIdsQuery.Contains(x.EntityId) && x.KeyGroup == nameof(Customer))
-                    .ExecuteDeleteAsync(cancelToken);
+                cancelToken.ThrowIfCancellationRequested();
 
-                if (numDeleted <= 0)
+                var customerIds = await customerIdsQuery.ToListAsync(cancelToken);
+                if (customerIds.Count == 0)
                 {
                     break;
                 }
 
-                numberOfDeletedAttributes += numDeleted;
-            }
-
-            // Delete guest customers.
-            while (true)
-            {
-                var numDeleted = await _db.Customers
+                // Delete generic attributes.
+                var numDeleted = await _db.GenericAttributes
                     .IgnoreQueryFilters()
-                    .Where(x => customerIdsQuery.Contains(x.Id))
+                    .Where(x => customerIds.Contains(x.EntityId) && x.KeyGroup == nameof(Customer))
                     .ExecuteDeleteAsync(cancelToken);
 
-                if (numDeleted <= 0)
+                numberOfDeletedAttributes += numDeleted;
+
+                // Delete guest customers.
+                numDeleted = await _db.Customers
+                    .IgnoreQueryFilters()
+                    .Where(x => customerIds.Contains(x.Id))
+                    .ExecuteDeleteAsync(cancelToken);
+
+                if (numDeleted == 0)
                 {
                     break;
                 }
 
                 numberOfDeletedCustomers += numDeleted;
+            }
+
+            if (numberOfDeletedCustomers + numberOfDeletedAttributes > 10000 && !cancelToken.IsCancellationRequested && _db.DataProvider.CanShrink)
+            {
+                await CommonHelper.TryAction(() => _db.DataProvider.ShrinkDatabaseAsync(true, cancelToken));
             }
 
             Logger.Debug("Deleted {0} guest customers including {1} generic attributes.", numberOfDeletedCustomers, numberOfDeletedAttributes);

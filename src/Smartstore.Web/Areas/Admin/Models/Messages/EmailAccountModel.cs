@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using FluentValidation;
+using Smartstore.Net.Mail;
 
 namespace Smartstore.Admin.Models.Messages
 {
@@ -16,6 +17,7 @@ namespace Smartstore.Admin.Models.Messages
         public string Host { get; set; }
 
         [LocalizedDisplay("*Port")]
+        [AdditionalMetadata("invariant", true)]
         public int Port { get; set; }
 
         [LocalizedDisplay("*Username")]
@@ -27,8 +29,8 @@ namespace Smartstore.Admin.Models.Messages
         [DisplayFormat(ConvertEmptyStringToNull = false)]
         public string Password { get; set; }
 
-        [LocalizedDisplay("*EnableSsl")]
-        public bool EnableSsl { get; set; }
+        [LocalizedDisplay("*MailSecureOption")]
+        public MailSecureOption MailSecureOption { get; set; } = MailSecureOption.Auto;
 
         [LocalizedDisplay("*UseDefaultCredentials")]
         public bool UseDefaultCredentials { get; set; }
@@ -50,6 +52,8 @@ namespace Smartstore.Admin.Models.Messages
             RuleFor(x => x.Email).NotEmpty().EmailAddress();
             RuleFor(x => x.DisplayName).NotEmpty();
             RuleFor(x => x.Host).NotEmpty();
+
+            // INFO: do not validate Username or Password. A server sometimes does not need them even if UseDefaultCredentials is disabled.
         }
     }
 }

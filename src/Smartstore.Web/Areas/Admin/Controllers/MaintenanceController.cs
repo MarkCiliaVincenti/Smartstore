@@ -9,8 +9,9 @@ using Microsoft.Extensions.Hosting;
 using Smartstore.Admin.Models.Maintenance;
 using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Checkout.Shipping;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Common.Services;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Content.Media;
 using Smartstore.Core.Content.Media.Imaging;
 using Smartstore.Core.DataExchange.Export;
 using Smartstore.Core.DataExchange.Import;
@@ -20,6 +21,7 @@ using Smartstore.Core.Packaging;
 using Smartstore.Core.Security;
 using Smartstore.Data;
 using Smartstore.Data.Caching;
+using Smartstore.Data.Providers;
 using Smartstore.Http;
 using Smartstore.Imaging;
 using Smartstore.IO;
@@ -41,6 +43,7 @@ namespace Smartstore.Admin.Controllers
         private readonly ICustomerService _customerService;
         private readonly IImageFactory _imageFactory;
         private readonly Lazy<IImageCache> _imageCache;
+        private readonly Lazy<IImageOffloder> _imageOffloader;
         private readonly Lazy<IFilePermissionChecker> _filePermissionChecker;
         private readonly Lazy<ICurrencyService> _currencyService;
         private readonly Lazy<IPaymentService> _paymentService;
@@ -49,6 +52,7 @@ namespace Smartstore.Admin.Controllers
         private readonly Lazy<IImportProfileService> _importProfileService;
         private readonly Lazy<UpdateChecker> _updateChecker;
         private readonly MeasureSettings _measureSettings;
+        private readonly IHostApplicationLifetime _appLifetime;
 
         public MaintenanceController(
             SmartDbContext db,
@@ -59,6 +63,7 @@ namespace Smartstore.Admin.Controllers
             ICustomerService customerService,
             IImageFactory imageFactory,
             Lazy<IImageCache> imageCache,
+            Lazy<IImageOffloder> imageOffloader,
             Lazy<IFilePermissionChecker> filePermissionChecker,
             Lazy<ICurrencyService> currencyService,
             Lazy<IPaymentService> paymentService,
@@ -66,7 +71,8 @@ namespace Smartstore.Admin.Controllers
             Lazy<IExportProfileService> exportProfileService,
             Lazy<IImportProfileService> importProfileService,
             Lazy<UpdateChecker> updateChecker,
-            MeasureSettings measureSettings)
+            MeasureSettings measureSettings,
+            IHostApplicationLifetime appLifetime)
         {
             _db = db;
             _memCache = memCache;
@@ -76,6 +82,7 @@ namespace Smartstore.Admin.Controllers
             _customerService = customerService;
             _imageFactory = imageFactory;
             _imageCache = imageCache;
+            _imageOffloader = imageOffloader;
             _filePermissionChecker = filePermissionChecker;
             _currencyService = currencyService;
             _paymentService = paymentService;
@@ -84,6 +91,7 @@ namespace Smartstore.Admin.Controllers
             _importProfileService = importProfileService;
             _updateChecker = updateChecker;
             _measureSettings = measureSettings;
+            _appLifetime = appLifetime;
         }
 
         #region Maintenance
@@ -94,7 +102,8 @@ namespace Smartstore.Admin.Controllers
             var model = new MaintenanceModel
             {
                 CanExecuteSql = _db.DataProvider.CanExecuteSqlScript,
-                CanCreateBackup = _db.DataProvider.CanBackup
+                CanCreateBackup = _db.DataProvider.CanBackup,
+                SqlQuery = TempData["Maintenance.SqlQuery"].Convert<string>()
             };
 
             model.DeleteGuests.EndDate = DateTime.UtcNow.AddDays(-7);
@@ -131,11 +140,13 @@ namespace Smartstore.Admin.Controllers
             DateTime? endDateValue = model.DeleteGuests.EndDate == null
                 ? null
                 : dtHelper.ConvertToUtcTime(model.DeleteGuests.EndDate.Value, dtHelper.CurrentTimeZone).AddDays(1);
-
+            
+            // Execute
             var numDeletedCustomers = await _customerService.DeleteGuestCustomersAsync(
                 startDateValue,
                 endDateValue,
-                model.DeleteGuests.OnlyWithoutShoppingCart);
+                model.DeleteGuests.OnlyWithoutShoppingCart,
+                _appLifetime.ApplicationStopping);
 
             NotifyInfo(T("Admin.System.Maintenance.DeleteGuests.TotalDeleted", numDeletedCustomers));
 
@@ -174,6 +185,8 @@ namespace Smartstore.Admin.Controllers
         {
             if (_db.DataProvider.CanExecuteSqlScript && model.SqlQuery.HasValue())
             {
+                TempData["Maintenance.SqlQuery"] = model.SqlQuery;
+
                 try
                 {
                     var rowsAffected = await _db.DataProvider.ExecuteSqlScriptAsync(model.SqlQuery);
@@ -187,6 +200,33 @@ namespace Smartstore.Admin.Controllers
             }
 
             return RedirectToAction("Index");
+        }
+
+        [Permission(Permissions.System.Maintenance.Execute)]
+        public async Task<IActionResult> OffloadEmbeddedImages(int take = 200)
+        {
+            //var result = await ProductPictureHelper.OffloadEmbeddedImages(_db, _mediaService.Value, take);
+            var result = await _imageOffloader.Value.BatchOffloadEmbeddedImagesAsync(take);
+
+            var message = result.ToString();
+
+            if (result.NumAttempted < result.NumProcessedEntities)
+            {
+                message += 
+                    Environment.NewLine + 
+                    Environment.NewLine + 
+                    "!! Apparently some embedded images could not be parsed and replaced correctly. Maybe incomplete or invalid HTML?";
+            }
+
+            if (result.NumProcessedEntities < result.NumAffectedEntities)
+            {
+                message +=
+                    Environment.NewLine +
+                    Environment.NewLine +
+                    "Please re-execute this script to continue processing the rest of the entities.";
+            }
+
+            return Content(message);
         }
 
         #endregion
@@ -290,46 +330,34 @@ namespace Smartstore.Admin.Controllers
             };
 
             // DB size
-            try
+            if (dataProvider.CanComputeSize)
             {
-                model.DatabaseSize = await dataProvider.GetDatabaseSizeAsync();
+                model.DatabaseSize = await CommonHelper.TryAction(dataProvider.GetDatabaseSizeAsync);
             }
-            catch
+
+            // DB table infos
+            if (dataProvider.CanReadTableInfo)
             {
+                model.DbTableInfos = await CommonHelper.TryAction(() => dataProvider.ReadTableInfosAsync(), new List<DbTableInfo>());
             }
 
             // Used RAM
-            try
-            {
-                model.UsedMemorySize = GetPrivateBytes();
-            }
-            catch
-            {
-            }
+            model.UsedMemorySize = CommonHelper.TryAction(GetPrivateBytes);
 
             // DB settings
-            try
+            if (DataSettings.Instance.IsValid())
             {
-                if (DataSettings.Instance.IsValid())
-                {
-                    model.DataProviderFriendlyName = dataProvider.ProviderFriendlyName;
-                    model.ShrinkDatabaseEnabled = dataProvider.CanShrink && Services.Permissions.Authorize(Permissions.System.Maintenance.Read);
-                }
-            }
-            catch
-            {
+                model.DataProviderFriendlyName = dataProvider.ProviderFriendlyName;
+                model.ShrinkDatabaseEnabled = dataProvider.CanShrink && Services.Permissions.Authorize(Permissions.System.Maintenance.Read);
             }
 
             // Loaded assemblies
-            try
+            model.AppDate = CommonHelper.TryAction(() => 
             {
                 var assembly = Assembly.GetExecutingAssembly();
                 var fi = new FileInfo(assembly.Location);
-                model.AppDate = fi.LastWriteTime.ToLocalTime();
-            }
-            catch
-            {
-            }
+                return model.AppDate = fi.LastWriteTime.ToLocalTime();
+            });
 
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -340,23 +368,28 @@ namespace Smartstore.Admin.Controllers
 
                 if (!assembly.IsDynamic)
                 {
-                    try
-                    {
-                        loadedAssembly.Location = assembly.Location;
-                    }
-                    catch
-                    {
-
-                    }
+                    loadedAssembly.Location = CommonHelper.TryAction(() => assembly.Location);
                 }
 
                 model.LoadedAssemblies.Add(loadedAssembly);
             }
 
-            //// MemCache stats
-            //model.MemoryCacheStats = GetMemoryCacheStats();
-
             return View(model);
+        }
+
+        [HttpPost]
+        [Permission(Permissions.System.Maintenance.Read)]
+        public IActionResult UsedMemory()
+        {
+            try
+            {
+                var bytes = GetPrivateBytes();
+                return Json(new { success = true, raw = bytes, pretty = Prettifier.HumanizeBytes(bytes) });
+            }
+            catch
+            {
+                return Json(new { success = false });
+            }
         }
 
         [Permission(Permissions.System.Maintenance.Execute)]
@@ -365,17 +398,23 @@ namespace Smartstore.Admin.Controllers
             try
             {
                 _imageFactory.ReleaseMemory();
+
                 await Task.Delay(500);
 
-                GC.Collect();
+                // Aggressive GC
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
                 GC.WaitForPendingFinalizers();
-                GC.Collect();
+
                 await Task.Delay(500);
 
                 NotifySuccess(T("Admin.System.SystemInfo.GarbageCollectSuccessful"));
             }
             catch (Exception ex)
             {
+                // Relaxed GC
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+
                 NotifyError(ex);
             }
 
@@ -389,7 +428,7 @@ namespace Smartstore.Admin.Controllers
             {
                 if (_db.DataProvider.CanShrink)
                 {
-                    await _db.DataProvider.ShrinkDatabaseAsync();
+                    await _db.DataProvider.ShrinkDatabaseAsync(false);
                     NotifySuccess(T("Common.ShrinkDatabaseSuccessful"));
                 }
             }
@@ -437,7 +476,7 @@ namespace Smartstore.Admin.Controllers
                 var status = response.StatusCode;
                 var warningModel = new SystemWarningModel
                 {
-                    Level = (status == HttpStatusCode.OK ? SystemWarningLevel.Pass : SystemWarningLevel.Fail)
+                    Level = status == HttpStatusCode.OK ? SystemWarningLevel.Pass : SystemWarningLevel.Fail
                 };
 
                 if (status == HttpStatusCode.OK)
@@ -868,68 +907,40 @@ namespace Smartstore.Admin.Controllers
 
         #region Utils
 
-        /// <summary>
-        /// Counts the size of all objects in both IMemoryCache and Smartstore memory cache
-        /// </summary>
-        private IDictionary<string, long> GetMemoryCacheStats()
-        {
-            var cache = Services.CacheFactory.GetMemoryCache();
-            var stats = new Dictionary<string, long>();
-            var instanceLookups = new HashSet<object>(ReferenceEqualityComparer.Instance) { cache, _memCache };
+        ///// <summary>
+        ///// Counts the byte size of all objects in both IMemoryCache and Smartstore memory cache
+        ///// </summary>
+        //private long GetMemCacheBytes()
+        //{
+        //    // System memory cache
+        //    var size = 0L; // GetObjectSize(_memCache);
 
-            // IMemoryCache
-            var memCacheKeys = _memCache.EnumerateKeys().ToArray();
-            foreach (var key in memCacheKeys)
-            {
-                var value = _memCache.Get(key);
-                var size = GetObjectSize(value);
+        //    // Smartstore memory cache
+        //    var cache = Services.CacheFactory.GetMemoryCache();
+        //    size += GetObjectSize(cache);
 
-                if (key is string str)
-                {
-                    stats.Add("MemoryCache:" + str.Replace(':', '_'), size + (sizeof(char) + (str.Length + 1)));
-                }
-                else
-                {
-                    stats.Add("MemoryCache:" + key.ToString(), size + GetObjectSize(key));
-                }
-            }
+        //    return size;
 
-            // Smartstore CacheManager
-            var cacheKeys = cache.Keys("*").ToArray();
-            foreach (var key in cacheKeys)
-            {
-                var value = cache.Get<object>(key);
-                var size = GetObjectSize(value);
+        //    static long GetObjectSize(object obj)
+        //    {
+        //        if (obj == null)
+        //        {
+        //            return 0;
+        //        }
 
-                stats.Add(key, size + (sizeof(char) + (key.Length + 1)));
-            }
-
-            return stats;
-
-            long GetObjectSize(object obj)
-            {
-                if (obj == null)
-                {
-                    return 0;
-                }
-
-                try
-                {
-                    return CommonHelper.GetObjectSizeInBytes(obj, instanceLookups);
-                }
-                catch
-                {
-                    return 0;
-                }
-            }
-        }
+        //        try
+        //        {
+        //            return CommonHelper.CalculateObjectSizeInBytes(obj);
+        //        }
+        //        catch
+        //        {
+        //            return 0;
+        //        }
+        //    }
+        //}
 
         private static long GetPrivateBytes()
         {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-
             var process = Process.GetCurrentProcess();
             process.Refresh();
 

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Data.Common;
 using System.IO;
 using System.Linq;
@@ -127,9 +126,14 @@ LIMIT {take} OFFSET {skip}";
                 : Task.FromResult(Database.ExecuteQueryRaw<long>(sql).FirstOrDefault());
         }
 
-        protected override Task<int> ShrinkDatabaseCore(bool async, CancellationToken cancelToken = default)
+        protected override Task<int> ShrinkDatabaseCore(bool async, bool onlyWhenFast, CancellationToken cancelToken = default)
         {
             // TODO: Lock
+            if (onlyWhenFast)
+            {
+                return Task.FromResult(0);
+            }
+
             var sql = $"VACUUM;PRAGMA wal_checkpoint=TRUNCATE;PRAGMA optimize;PRAGMA wal_autocheckpoint;";
             return async
                 ? Database.ExecuteSqlRawAsync(sql, cancelToken)
@@ -145,13 +149,13 @@ LIMIT {take} OFFSET {skip}";
                 : Task.FromResult(Database.ExecuteSqlRaw(sql));
         }
 
-        protected override async Task<int?> GetTableIncrementCore(string tableName, bool async)
+        protected override Task<int?> GetTableIncrementCore(string tableName, bool async)
         {
             var sql = $"SELECT seq FROM sqlite_sequence WHERE name = \"{tableName}\"";
 
             return async
-               ? (await Database.ExecuteScalarRawAsync<int>(sql)).Convert<int?>()
-               : Database.ExecuteScalarRaw<int>(sql).Convert<int?>();
+               ? Database.ExecuteScalarRawAsync<int?>(sql)
+               : Task.FromResult(Database.ExecuteScalarRaw<int?>(sql));
         }
 
         protected override Task SetTableIncrementCore(string tableName, int ident, bool async)
@@ -195,36 +199,6 @@ LIMIT {take} OFFSET {skip}";
             }
             
             return 1;
-        }
-
-        protected override IList<string> SplitSqlScript(string sqlScript)
-        {
-            var commands = new List<string>();
-            var lines = sqlScript.GetLines(true);
-            var command = string.Empty;
-            var delimiter = ";";
-
-            foreach (var line in lines)
-            {
-                // Ignore comments
-                if (line.StartsWith("--"))
-                {
-                    continue;
-                }
-
-                if (!line.EndsWith(delimiter))
-                {
-                    command += line + Environment.NewLine;
-                }
-                else
-                {
-                    command += line[..^delimiter.Length];
-                    commands.Add(command);
-                    command = string.Empty;
-                }
-            }
-
-            return commands;
         }
 
         protected override Stream OpenBlobStreamCore(string tableName, string blobColumnName, string pkColumnName, object pkColumnValue)

@@ -58,8 +58,11 @@ namespace Smartstore.Scheduling
             ITask job = null;
             Type taskType = null;
             Exception exception = null;
-            bool faulted = false, canceled = false;
-            string lastError = null, stateName = null, normalizedTypeName = null;
+            bool faulted = false;
+            bool canceled = false;
+            string lastError = null;
+            string stateName = null; 
+            string normalizedTypeName = null;
 
             var executionInfo = _taskStore.CreateExecutionInfo(task);
 
@@ -88,16 +91,17 @@ namespace Smartstore.Scheduling
                 // Task history entry has been successfully added, now we execute the task.
                 // Create task instance.
                 job = _taskActivator.Activate(normalizedTypeName);
-                stateName = task.Id.ToString();
+                stateName = task.Id.ToStringInvariant();
 
+                // Create execution context
+                var ctx = new TaskExecutionContext(_taskStore, _asyncState, httpContext, _componentContext, executionInfo, taskParameters);
+                
                 // Create & set a composite CancellationTokenSource which also contains the global app shoutdown token.
                 var cts = CancellationTokenSource.CreateLinkedTokenSource(_asyncRunner.AppShutdownCancellationToken, cancelToken);
-                await _asyncState.CreateAsync(task, stateName, false, cts);
+                await _asyncState.CreateAsync(ctx.ExecutionInfo.Task, stateName, neverExpires: false, cancelTokenSource: cts);
 
                 // Run the task
                 Logger.Debug("Executing scheduled task: {0}", task.Type);
-                var ctx = new TaskExecutionContext(_taskStore, httpContext, _componentContext, executionInfo, taskParameters);
-
                 await job.Run(ctx, cts.Token);
             }
             catch (Exception ex)

@@ -1,12 +1,9 @@
-﻿using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Text;
 using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
 using Smartstore.Caching;
 using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Checkout.Cart;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Content.Media;
 using Smartstore.Core.Data;
 using Smartstore.Core.Localization;
@@ -320,7 +317,7 @@ namespace Smartstore.Core.Catalog.Attributes
                 return null;
             }
 
-            var cacheKey = ATTRIBUTECOMBINATION_BY_IDJSON_KEY.FormatInvariant(productId, selection.AsJson());
+            var cacheKey = ATTRIBUTECOMBINATION_BY_IDJSON_KEY.FormatInvariant(productId, selection.AsJson().XxHash());
 
             var combination = await _requestCache.GetAsync(cacheKey, async () =>
             {

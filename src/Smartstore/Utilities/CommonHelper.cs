@@ -1,9 +1,9 @@
 using System.Collections;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
-using Smartstore.Domain;
 using Smartstore.Engine;
 using Smartstore.IO;
 
@@ -32,7 +32,7 @@ namespace Smartstore.Utilities
 
         private static IFileSystem GetContentRoot()
         {
-            return EngineContext.Current?.Application?.ContentRoot ?? new LocalFileSystem(AppContext.BaseDirectory);
+            return EngineContext.Current?.Application?.ContentRoot ?? new LocalFileSystem(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location));
         }
 
         public static bool IsDevEnvironment
@@ -178,6 +178,84 @@ namespace Smartstore.Utilities
 
         #endregion
 
+        #region TryAction
+
+        /// <summary>
+        /// A simple action executor that tries to execute the given <paramref name="action"/>.
+        /// This method does not throw any exception.
+        /// </summary>
+        /// <param name="action">Action to execute.</param>
+        /// <param name="onException">Optional exception handler.</param>
+        public static void TryAction(
+            Action action, 
+            Action<Exception> onException = null)
+        {
+            Guard.NotNull(action);
+
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                onException?.Invoke(ex);
+            }
+        }
+
+        /// <summary>
+        /// A simple function executor that tries to execute the given <paramref name="action"/>.
+        /// This method does not throw any exception.
+        /// </summary>
+        /// <param name="action">Function to execute.</param>
+        /// <param name="defaultValue">The default value to return when an exception occurs.</param>
+        /// <param name="onException">Optional exception handler.</param>
+        public static TResult TryAction<TResult>(
+            Func<TResult> action, 
+            TResult defaultValue = default, 
+            Action<Exception> onException = null)
+        {
+            Guard.NotNull(action);
+
+            try
+            {
+                return action();
+            }
+            catch (Exception ex)
+            {
+                onException?.Invoke(ex);
+            }
+
+            return defaultValue;
+        }
+
+        /// <summary>
+        /// A simple function executor that tries to execute the given <paramref name="action"/> asynchronously.
+        /// This method does not throw any exception.
+        /// </summary>
+        /// <param name="action">Function to execute.</param>
+        /// <param name="defaultValue">The default value to return when an exception occurs.</param>
+        /// <param name="onException">Optional exception handler.</param>
+        public static async Task<TResult> TryAction<TResult>(
+            Func<Task<TResult>> action,
+            TResult defaultValue = default,
+            Action<Exception> onException = null)
+        {
+            Guard.NotNull(action);
+
+            try
+            {
+                return await action();
+            }
+            catch (Exception ex)
+            {
+                onException?.Invoke(ex);
+            }
+
+            return defaultValue;
+        }
+
+        #endregion
+
         #region Misc
 
         public static bool IsTruthy(object value)
@@ -216,20 +294,21 @@ namespace Smartstore.Utilities
         }
 
         /// <summary>
-        /// Calculate the optimistic size af any managed object.
+        /// Calculate the optimistic size af any managed object in bytes.
         /// Get the minimal memory footprint of given <paramref name="obj" />.
         /// Counted are all fields, including auto-generated, private and protected.
         /// Not counted: any static fields, any properties, functions, member methods.
         /// </summary>
-        public static long GetObjectSizeInBytes(object obj, HashSet<object> instanceLookup = null)
+        [Obsolete("Don't use, too unstable.")]
+        public static long CalculateObjectSizeInBytes(object obj, ISet<object> visitedObjects = null)
         {
             if (obj == null)
             {
                 return sizeof(int);
             }
 
+            var size = 0L;
             var type = obj.GetType();
-            long size = 0;
 
             if (type.IsPrimitive)
             {
@@ -245,6 +324,8 @@ namespace Smartstore.Utilities
                         return sizeof(float);
                     case TypeCode.Double:
                         return sizeof(double);
+                    case TypeCode.Decimal:
+                        return sizeof(decimal);
                     case TypeCode.Int16:
                     case TypeCode.UInt16:
                         return sizeof(short);
@@ -257,9 +338,9 @@ namespace Smartstore.Utilities
                         return sizeof(long);
                 }
             }
-            else if (obj is decimal)
+            else if (type.IsEnum || obj is DateTime || obj is DateTimeOffset || obj is DateOnly || obj is TimeOnly)
             {
-                return sizeof(decimal);
+                return sizeof(int);
             }
             else if (obj is string str)
             {
@@ -269,24 +350,20 @@ namespace Smartstore.Utilities
             {
                 return _pointerSize + (sizeof(char) * (sb.Length + 1));
             }
-            else if (type.IsEnum)
-            {
-                return sizeof(int);
-            }
             else if (obj is Stream stream)
             {
-                return _pointerSize + stream.Length;
+                return stream.CanSeek ? _pointerSize + stream.Length : _pointerSize;
             }
             else if (obj is IDictionary dic)
             {
                 foreach (var key in dic.Keys)
                 {
-                    size += GetObjectSizeInBytes(key, instanceLookup);
+                    size += CalculateObjectSizeInBytes(key, visitedObjects);
                 }
 
                 foreach (var value in dic.Values)
                 {
-                    size += GetObjectSizeInBytes(value, instanceLookup);
+                    size += CalculateObjectSizeInBytes(value, visitedObjects);
                 }
 
                 return _pointerSize + size;
@@ -295,84 +372,90 @@ namespace Smartstore.Utilities
             {
                 foreach (var item in e)
                 {
-                    size += GetObjectSizeInBytes(item, instanceLookup);
+                    size += CalculateObjectSizeInBytes(item, visitedObjects);
                 }
 
                 return _pointerSize + size;
-            }
-            else if (type.IsValueType)
-            {
-                if (obj is DateTime || obj is DateTimeOffset)
-                {
-                    return 8;
-                }
-                else if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
-                {
-                    var properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public);
-                    foreach (var prop in properties)
-                    {
-                        size += GetObjectSizeInBytes(prop.GetValue(obj), instanceLookup);
-                    }
-
-                    return size;
-                }
-                else
-                {
-                    try
-                    {
-                        unsafe
-                        {
-                            return Marshal.SizeOf(obj);
-                        }
-                    }
-                    catch
-                    {
-                        return 0;
-                    }
-                }
             }
             else if (obj is Pointer)
             {
                 return _pointerSize;
             }
-            else if (type.IsClass)
+            else if (obj is IMemoryCache memCache)
             {
-                if (ObjectAnalyzed(obj))
+                foreach (var key in memCache.EnumerateKeys())
                 {
-                    return _pointerSize;
+                    if (memCache.TryGetValue(key, out var value))
+                    {
+                        size += CalculateObjectSizeInBytes(value, visitedObjects);
+                    }
+                }
+                return _pointerSize;
+            }
+            else
+            {
+                size = _pointerSize;
+                
+                if (ObjectVisited(obj))
+                {
+                    return size;
                 }
 
-                if (typeof(BaseEntity).IsAssignableFrom(type) || type.IsNotPublic)
+                if (IsToxicType(type))
                 {
-                    return _pointerSize;
+                    return size;
                 }
 
-                size += _pointerSize;
                 var fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
                 foreach (var field in fields)
                 {
-                    size += GetObjectSizeInBytes(field.GetValue(obj), instanceLookup);
+                    if (IsToxicType(type))
+                    {
+                        size = _pointerSize;
+                        continue;
+                    }
+
+                    size += CalculateObjectSizeInBytes(field.GetValue(obj), visitedObjects);
                 }
 
                 return size;
             }
 
-            return 0;
-
-            bool ObjectAnalyzed(object o)
+            bool ObjectVisited(object o)
             {
-                if (instanceLookup == null)
-                {
-                    instanceLookup = new HashSet<object>(ReferenceEqualityComparer.Instance);
-                }
+                visitedObjects ??= new HashSet<object>(ReferenceEqualityComparer.Instance);
 
-                if (instanceLookup.Contains(o))
+                if (visitedObjects.Contains(o))
                 {
                     return true;
                 }
 
-                instanceLookup.Add(o);
+                visitedObjects.Add(o);
+                return false;
+            }
+
+            bool IsToxicType(Type t)
+            {
+                if (typeof(ILazyLoader).IsAssignableFrom(t))
+                {
+                    return true;
+                }
+
+                if (type.IsDelegate())
+                {
+                    // Don't visit delegates (Action, Func<> etc.)
+                    return true;
+                }
+
+                if (type.IsGenericType)
+                {
+                    var gtdef = type.GetGenericTypeDefinition();
+                    if (gtdef == typeof(Lazy<>) || gtdef == typeof(Work<>))
+                    {
+                        return true;
+                    }
+                }
+
                 return false;
             }
         }

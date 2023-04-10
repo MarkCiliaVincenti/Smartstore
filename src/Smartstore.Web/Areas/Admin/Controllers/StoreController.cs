@@ -5,7 +5,7 @@ using Smartstore.Admin.Models.Stores;
 using Smartstore.ComponentModel;
 using Smartstore.Core.Catalog.Search;
 using Smartstore.Core.Checkout.Cart;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Content.Media;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Localization;
@@ -120,7 +120,7 @@ namespace Smartstore.Admin.Controllers
                 var store = await MapperFactory.MapAsync<StoreModel, Store>(model);
 
                 // Ensure we have "/" at the end.
-                store.Url = store.Url.EnsureEndsWith("/");
+                store.Url = store.Url.EnsureEndsWith('/');
 
                 // INFO: we have to do this because we have a foreign key constraint on these fields.
                 store.PrimaryExchangeRateCurrencyId = _currencySettings.PrimaryExchangeCurrencyId;
@@ -172,7 +172,7 @@ namespace Smartstore.Admin.Controllers
                 await MapperFactory.MapAsync(model, store);
 
                 // Ensure we have "/" at the end.
-                store.Url = store.Url.EnsureEndsWith("/");
+                store.Url = store.Url.EnsureEndsWith('/');
 
                 // INFO: we have to do this because we have a foreign key constraint on these fields.
                 store.PrimaryExchangeRateCurrencyId = _currencySettings.PrimaryExchangeCurrencyId;

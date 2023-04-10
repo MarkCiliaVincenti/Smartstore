@@ -3,7 +3,7 @@ using Smartstore.Threading;
 
 namespace Smartstore.Collections
 {
-    public sealed class SyncedCollection<T> : ICollection<T>
+    public sealed class SyncedCollection<T> : Disposable, ICollection<T>
     {
         // INFO: Don't call it SynchronizedCollection because of framework dupe.
         private readonly ICollection<T> _col;
@@ -118,6 +118,14 @@ namespace Smartstore.Collections
             }
         }
 
+        protected override void OnDispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _rwLock.Dispose();
+            }
+        }
+
         #region ICollection<T>
 
         public int Count
@@ -159,9 +167,36 @@ namespace Smartstore.Collections
 
         public void CopyTo(T[] array, int arrayIndex)
         {
-            using (_rwLock.GetReadLock())
+            Guard.NotNull(array);
+            
+            if (array.IsSynchronized)
             {
-                _col.CopyTo(array, arrayIndex);
+                // Have timeout in case of deadlock
+                if (Monitor.TryEnter(array.SyncRoot, 1000))
+                {
+                    try
+                    {
+                        using (_rwLock.GetReadLock())
+                        {
+                            _col.CopyTo(array, arrayIndex);
+                        }
+                    }
+                    finally
+                    {
+                        Monitor.Exit(array.SyncRoot);
+                    }
+                }
+                else
+                {
+                    throw new TimeoutException("Failed to copy to array.");
+                }
+            }
+            else
+            {
+                using (_rwLock.GetReadLock())
+                {
+                    _col.CopyTo(array, arrayIndex);
+                }
             }
         }
 
@@ -175,12 +210,17 @@ namespace Smartstore.Collections
 
         IEnumerator IEnumerable.GetEnumerator()
         {
-            return this.GetEnumerator();
+            return GetEnumerator();
         }
 
         public IEnumerator<T> GetEnumerator()
         {
-            return new SafeEnumerator(_col.GetEnumerator(), _rwLock);
+            using (_rwLock.GetWriteLock())
+            {
+                // Create a collection snaphot
+                var snaphot = _col.ToList();
+                return new SafeEnumerator(snaphot.GetEnumerator(), _rwLock);
+            }
         }
 
         #endregion
@@ -197,20 +237,39 @@ namespace Smartstore.Collections
             {
                 _inner = inner;
                 _rwLock = rwLock;
-
-                // Lock on creation
-                _rwLock.EnterReadLock();
             }
 
             public bool MoveNext()
-                => _inner.MoveNext();
+            {
+                if (!_rwLock.IsReadLockHeld)
+                {
+                    _rwLock.EnterReadLock();
+                }
+                
+                return _inner.MoveNext();
+            }
 
             public void Reset()
-                => _inner.Reset();
+            {
+                if (!_rwLock.IsReadLockHeld)
+                {
+                    _rwLock.EnterReadLock();
+                }
+
+                _inner.Reset();
+            }
 
             public T Current
             {
-                get => _inner.Current;
+                get 
+                {
+                    if (!_rwLock.IsReadLockHeld)
+                    {
+                        _rwLock.EnterReadLock();
+                    }
+
+                    return _inner.Current;
+                }
             }
 
             object IEnumerator.Current
@@ -220,12 +279,17 @@ namespace Smartstore.Collections
 
             public void Dispose()
             {
-                // Exit lock when foreach loop finishes
+                // Dispose inner enumerator when foreach loop finishes
                 if (!_disposed)
                 {
                     try
                     {
-                        _rwLock.ExitReadLock();
+                        if (_rwLock.IsReadLockHeld)
+                        {
+                            _rwLock.ExitReadLock();
+                        }
+                        
+                        _inner.Dispose();
                         _disposed = true;
                     }
                     catch

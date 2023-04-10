@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Smartstore.Core.Catalog;
 using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Catalog.Products;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Content.Media;
 using Smartstore.Core.Content.Menus;
 using Smartstore.Core.Identity;
@@ -102,6 +102,7 @@ namespace Smartstore.Web.Controllers
 
         public async Task<IActionResult> ProductDetails(int productId, ProductVariantQuery query)
         {
+            // Sync on purpose because of large column.
             var product = await _db.Products
                 .AsSplitQuery()
                 .IncludeMedia()

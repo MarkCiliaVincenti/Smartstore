@@ -4,7 +4,7 @@ using Smartstore.Core.Data;
 
 namespace Smartstore.Core.Catalog.Products.Utilities
 {
-    public static class ProductPictureHelper
+    public static partial class ProductPictureHelper
     {
         /// <summary>
         /// Fixes 'MainPictureId' property of a single product entity.
@@ -15,7 +15,7 @@ namespace Smartstore.Core.Catalog.Products.Utilities
         /// <returns><c>true</c> when value was fixed.</returns>
         public static bool FixProductMainPictureId(SmartDbContext db, Product product, IEnumerable<ProductMediaFile> entities = null)
         {
-            Guard.NotNull(product, nameof(product));
+            Guard.NotNull(product);
 
             // INFO: this method must be able to handle pre-save state also.
 

@@ -10,7 +10,7 @@ using Smartstore.Core.Checkout.Orders;
 using Smartstore.Core.Checkout.Shipping;
 using Smartstore.Core.Checkout.Tax;
 using Smartstore.Core.Common;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Common.Tasks;
 using Smartstore.Core.Configuration;
 using Smartstore.Core.Content.Media.Tasks;
@@ -386,7 +386,7 @@ namespace Smartstore.Core.Installation
                     });
                     x.StateProvinces.Add(new StateProvince()
                     {
-                        Name = "Niderösterreich",
+                        Name = "Niederösterreich",
                         Abbreviation = "NÖ",
                         Published = true,
                         DisplayOrder = 1,

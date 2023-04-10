@@ -1,7 +1,7 @@
 ﻿using FluentValidation.AspNetCore;
 using Smartstore.Admin.Models.Scheduling;
 using Smartstore.ComponentModel;
-using Smartstore.Core.Common.Settings;
+using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Security;
 using Smartstore.Scheduling;
 using Smartstore.Threading;
@@ -146,7 +146,7 @@ namespace Smartstore.Admin.Controllers
             {
                 if (lastExecutionInfo.IsRunning)
                 {
-                    NotifyInfo(await GetTaskMessage(lastExecutionInfo.Task, "Admin.System.ScheduleTasks.RunNow.Progress"));
+                    NotifyInfo(GetTaskMessage(lastExecutionInfo.Task, "Admin.System.ScheduleTasks.RunNow.Progress"));
                 }
                 else if (lastExecutionInfo.Error.HasValue())
                 {
@@ -154,7 +154,7 @@ namespace Smartstore.Admin.Controllers
                 }
                 else
                 {
-                    NotifySuccess(await GetTaskMessage(lastExecutionInfo.Task, "Admin.System.ScheduleTasks.RunNow.Success"));
+                    NotifySuccess(GetTaskMessage(lastExecutionInfo.Task, "Admin.System.ScheduleTasks.RunNow.Success"));
                 }
             }
 
@@ -305,12 +305,12 @@ namespace Smartstore.Admin.Controllers
             return PartialView(model);
         }
 
-        private async Task<string> GetTaskMessage(TaskDescriptor task, string resourceKey)
+        private string GetTaskMessage(TaskDescriptor task, string resourceKey)
         {
             var normalizedTypeName = _taskActivator.GetNormalizedTypeName(task);
 
             string message = normalizedTypeName.HasValue()
-                ? await Services.Localization.GetResourceAsync(resourceKey + "." + normalizedTypeName, logIfNotFound: false, returnEmptyIfNotFound: true)
+                ? Services.Localization.GetResource(resourceKey + "." + normalizedTypeName, logIfNotFound: false, returnEmptyIfNotFound: true)
                 : null;
 
             return message.IsEmpty() ? T(resourceKey) : message;

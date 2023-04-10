@@ -1,6 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Smartstore.Data;
-using EfState = Microsoft.EntityFrameworkCore.EntityState;
 
 namespace Smartstore
 {
@@ -114,7 +113,7 @@ namespace Smartstore
         {
             // Be aware of the entity state. you cannot get modified properties for detached entities.
             EnsureChangesDetected(entry);
-
+            
             if (entry.State != EfState.Modified)
             {
                 yield break;
@@ -166,10 +165,14 @@ namespace Smartstore
             var ctx = entry.Context;
 
             if (ctx.ChangeTracker.AutoDetectChangesEnabled && state == EfState.Modified)
+            {
                 return;
+            }
 
-            if ((ctx as HookingDbContext)?.IsInSaveOperation == true)
+            if (ctx is HookingDbContext { IsInSaveOperation: true })
+            {
                 return;
+            }  
 
             if (state == EfState.Unchanged || state == EfState.Modified)
             {

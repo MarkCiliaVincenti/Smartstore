@@ -2,6 +2,10 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Infrastructure.Internal;
+using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -9,15 +13,15 @@ using Smartstore.Data.Hooks;
 using Smartstore.Data.Providers;
 using Smartstore.Domain;
 using Smartstore.Engine;
+using Smartstore.Utilities;
 
 namespace Smartstore.Data
 {
+    [SuppressMessage("Usage", "EF1001:Internal EF Core API usage.", Justification = "Pending")]
     public abstract class HookingDbContext : DbContext
     {
-        private DbSaveChangesOperation _currentSaveOperation;
-        private DataProvider _dataProvider;
-        private IDbHookHandler _hookHandler;
-
+        private static readonly FieldInfo _leaseField = typeof(DbContext).GetField("_lease", BindingFlags.NonPublic | BindingFlags.Instance);
+        
         private static readonly ValueConverter _dateTimeConverter =
             new ValueConverter<DateTime, DateTime>(
                 v => v,
@@ -28,10 +32,84 @@ namespace Smartstore.Data
                 v => v,
                 v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
 
+        private DbContextLease? _lease;
+        private readonly Stack<DbSaveChangesOperation> _saveOperations = new(2);
+        private DataProvider _dataProvider;
+
         public HookingDbContext(DbContextOptions options)
             : base(options)
         {
             Options = options;
+
+            if (CommonHelper.IsHosted)
+            {
+                ChangeTracker.Tracked += OnTracked;
+                ChangeTracker.StateChanged += OnStateChanged;
+            }
+        }
+
+        #region LazyLoader injection
+
+        private static void OnTracked(object sender, EntityTrackedEventArgs e)
+        {
+            var entry = e.Entry;
+            if (entry.Entity is BaseEntity entity && entry.State is EfState.Unchanged or EfState.Modified)
+            {
+                InjectLazyLoader(entity, entry.Context);
+            }
+        }
+
+        private static void OnStateChanged(object sender, EntityStateChangedEventArgs e)
+        {
+            var entry = e.Entry;
+            if (entry.Entity is BaseEntity entity)
+            {
+                if (e.NewState is EfState.Unchanged or EfState.Modified)
+                {
+                    InjectLazyLoader(entity, entry.Context);
+                }
+                else
+                {
+                    DropLazyLoader(entity);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void InjectLazyLoader(BaseEntity entity, DbContext db)
+        {
+            if (entity.LazyLoader is NullLazyLoader)
+            {
+                var lazyLoader = db.GetService<ILazyLoader>();
+                entity.LazyLoader = lazyLoader;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void DropLazyLoader(BaseEntity entity)
+        {
+            if (entity.LazyLoader is LazyLoader lazyLoader)
+            {
+                lazyLoader.Dispose();
+                entity.LazyLoader = NullLazyLoader.Instance;
+            }
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Gets a value indicating whether the DbContext instance
+        /// was obtained from the DbContext pool.
+        /// </summary>
+        protected virtual bool IsActiveLease 
+        { 
+            get
+            {
+                _lease ??= (DbContextLease)_leaseField.GetValue(this);
+                _lease ??= DbContextLease.InactiveLease;
+
+                return _lease.Value.IsActive == true;
+            }
         }
 
         protected internal virtual DbContextOptions Options { get; }
@@ -63,17 +141,33 @@ namespace Smartstore.Data
 
         private void ResetState()
         {
-            // Instance is returned to pool: reset state.
-            MinHookImportance = HookImportance.Normal;
-            SuppressCommit = false;
-            DeferCommit = false;
-            _currentSaveOperation = null;
-            _hookHandler = null;
+            while (_saveOperations.TryPop(out var op))
+            {
+                op.Dispose();
+            }
 
             if (_dataProvider != null)
             {
                 _dataProvider.Dispose();
                 _dataProvider = null;
+            }
+
+            if (IsActiveLease)
+            {
+                // Instance is returned to pool: reset state.
+                MinHookImportance = HookImportance.Normal;
+                SuppressCommit = false;
+                DeferCommit = false;
+
+                var trackedEntries = ChangeTracker.Entries<BaseEntity>();
+                foreach (var entry in trackedEntries)
+                {
+                    if (entry.Entity.LazyLoader is LazyLoader lazyLoader)
+                    {
+                        lazyLoader.Dispose();
+                        entry.Entity.LazyLoader = null;
+                    }
+                }
             }
         }
 
@@ -99,81 +193,31 @@ namespace Smartstore.Data
         /// </summary>
         internal bool DeferCommit { get; set; }
 
-        protected internal IDbHookHandler DbHookHandler
+        protected internal IDbHookProcessor ActivateHookProcessor()
         {
-            get 
+            try
             {
-                if (_hookHandler != null)
-                {
-                    return _hookHandler;
-                }
-
-                IDbHookHandler handler = null;
-                try
-                {
-                    handler = EngineContext.Current?.Scope?.ResolveOptional<IDbHookHandler>();
-                }
-                catch
-                {
-                }
-
-                return handler ?? NullDbHookHandler.Instance;
+                return EngineContext.Current?.Scope?.ResolveOptional<IDbHookProcessor>() ?? NullDbHookProcessor.Instance;
             }
-            set => _hookHandler = value;
+            catch
+            {
+                return NullDbHookProcessor.Instance;
+            }
         }
 
-        protected internal bool IsInSaveOperation => _currentSaveOperation != null;
+        protected internal bool IsInSaveOperation => _saveOperations.Count > 0;
 
         /// <inheritdoc/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
-        {
-            if (SuppressCommit)
-            {
-                DeferCommit = true;
-                return 0;
-            }
-            else
-            {
-                DeferCommit = false;
-            }
-
-            var op = _currentSaveOperation;
-
-            if (op != null)
-            {
-                if (op.Stage == DbSaveStage.PreSave)
-                {
-                    // This was called from within a PRE action hook. We must get out:... 
-                    // 1.) to prevent cyclic calls
-                    // 2.) we want new entities in the state tracker (added by pre hooks) to be committed atomically in the core SaveChanges() call later on.
-                    return 0;
-                }
-                else if (op.Stage == DbSaveStage.PostSave)
-                {
-                    // This was called from within a POST action hook. Core SaveChanges() has already been called,
-                    // but new entities could have been added to the state tracker by hooks.
-                    // Therefore we need to commit them and get outta here, otherwise: cyclic nightmare!
-                    // DetectChanges() here is important, 'cause we turned it off for the save process.
-                    ChangeTracker.DetectChanges();
-                    return SaveChangesCore(acceptAllChangesOnSuccess);
-                }
-            }
-
-            _currentSaveOperation = new DbSaveChangesOperation(this);
-
-            try
-            {
-                return _currentSaveOperation.Execute(acceptAllChangesOnSuccess);
-            }
-            finally
-            {
-                _currentSaveOperation?.Dispose();
-                _currentSaveOperation = null;
-            }
-        }
+            => SaveChangesInternal(acceptAllChangesOnSuccess, false).GetAwaiter().GetResult();
 
         /// <inheritdoc/>
-        public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+            => SaveChangesInternal(acceptAllChangesOnSuccess, true, cancellationToken);
+
+        private async Task<int> SaveChangesInternal(bool acceptAllChangesOnSuccess, bool async, CancellationToken cancelToken = default)
         {
             if (SuppressCommit)
             {
@@ -185,38 +229,48 @@ namespace Smartstore.Data
                 DeferCommit = false;
             }
 
-            var op = _currentSaveOperation;
+            _saveOperations.TryPeek(out var currentSaveOperation);
 
-            if (op != null)
+            if (currentSaveOperation == null)
             {
-                if (op.Stage == DbSaveStage.PreSave)
+                // No operation currently running. Create a new operation.
+                currentSaveOperation = new DbSaveChangesOperation(this, ActivateHookProcessor());
+            }
+            else
+            {
+                if (currentSaveOperation.Stage == DbSaveStage.PreSave)
                 {
                     // This was called from within a PRE action hook. We must get out:... 
                     // 1.) to prevent cyclic calls
                     // 2.) we want new entities in the state tracker (added by pre hooks) to be committed atomically in the core SaveChanges() call later on.
                     return 0;
                 }
-                else if (op.Stage == DbSaveStage.PostSave)
+                else if (currentSaveOperation.Stage == DbSaveStage.PostSave)
                 {
                     // This was called from within a POST action hook. Core SaveChanges() has already been called,
                     // but new entities could have been added to the state tracker by hooks.
-                    // Therefore we need to commit them and get outta here, otherwise: cyclic nightmare!
-                    // DetectChanges() here is important, 'cause we turned it off for the save process.
-                    base.ChangeTracker.DetectChanges();
-                    return await SaveChangesCoreAsync(acceptAllChangesOnSuccess, cancellationToken);
+                    // Therefore we allow a new nested save operation where only ESSENTIAL PRE hooks may run.
+                    currentSaveOperation = new DbSaveChangesOperation(currentSaveOperation);
                 }
             }
 
-            _currentSaveOperation = new DbSaveChangesOperation(this);
+            _saveOperations.Push(currentSaveOperation);
 
             try
             {
-                return await _currentSaveOperation.ExecuteAsync(acceptAllChangesOnSuccess, cancellationToken);
+                if (async)
+                {
+                    return await currentSaveOperation.ExecuteAsync(acceptAllChangesOnSuccess, cancelToken);
+                }
+                else
+                {
+                    return currentSaveOperation.Execute(acceptAllChangesOnSuccess);
+                }
             }
             finally
             {
-                _currentSaveOperation?.Dispose();
-                _currentSaveOperation = null;
+                _saveOperations.TryPop(out currentSaveOperation);
+                currentSaveOperation?.Dispose();
             }
         }
 
@@ -238,13 +292,32 @@ namespace Smartstore.Data
             return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         }
 
+        //private static MethodBase TryFindCallingHookMember(StackTrace trace)
+        //{
+        //    var numFrames = trace.FrameCount;
+
+        //    for (int i = 0; i < numFrames; i++)
+        //    {
+        //        var method = trace.GetFrame(i)?.GetMethod();
+        //        if (method != null)
+        //        {
+        //            if (typeof(IDbSaveHook).IsAssignableFrom(method.ReflectedType))
+        //            {
+        //                return method;
+        //            }
+        //        }
+        //    }
+
+        //    return null;
+        //}
+
         #endregion
 
         #region Model bootstrapping
 
         protected void CreateModel(ModelBuilder modelBuilder, IEnumerable<Assembly> assemblies)
         {
-            Guard.NotNull(assemblies, nameof(assemblies));
+            Guard.NotNull(assemblies);
 
             RegisterEntities(modelBuilder, assemblies);
             RegisterEntityMappings(modelBuilder, assemblies);
@@ -311,7 +384,6 @@ namespace Smartstore.Data
             }
         }
 
-        [SuppressMessage("Usage", "EF1001:Internal EF Core API usage.", Justification = "Required")]
         private static void ApplyDecimalPrecisionConvention(IMutableProperty property)
         {
             if (property.ClrType == typeof(decimal) || property.ClrType == typeof(decimal?))
@@ -332,7 +404,6 @@ namespace Smartstore.Data
             }
         }
 
-        [SuppressMessage("Usage", "EF1001:Internal EF Core API usage.", Justification = "Required")]
         private static void ApplyDateTimeUtcConvention(IMutableProperty property)
         {
             if (property.ClrType == typeof(DateTime) && CanConvert())

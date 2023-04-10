@@ -6,32 +6,32 @@
     public interface IMailAccount
     {
         /// <summary>
-        /// Gets or sets an email host
+        /// Gets an email host.
         /// </summary>
         string Host { get; }
 
         /// <summary>
-        /// Gets or sets an email port
+        /// Gets an email port
         /// </summary>
         int Port { get; }
 
         /// <summary>
-        /// Gets or sets an email user name
+        /// Gets an email user name.
         /// </summary>
         string Username { get; }
 
         /// <summary>
-        /// Gets or sets an email password
+        /// Gets an email password.
         /// </summary>
         string Password { get; }
 
         /// <summary>
-        /// Gets or sets a value that controls whether the SmtpClient uses Secure Sockets Layer (SSL) to encrypt the connection
+        /// Gets an option for SSL and/or TLS encryption to be used.
         /// </summary>
-        bool EnableSsl { get; }
+        public MailSecureOption MailSecureOption { get; }
 
         /// <summary>
-        /// Gets or sets a value that controls whether the default system credentials of the application are sent with requests.
+        /// Gets a value that controls whether the default system credentials of the application are sent with requests.
         /// </summary>
         bool UseDefaultCredentials { get; }
     }

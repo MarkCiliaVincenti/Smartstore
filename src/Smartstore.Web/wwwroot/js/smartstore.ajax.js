@@ -18,12 +18,17 @@
         // Call the stored reference to the native method
         open.apply(this, arguments);
 
-        if (method?.toLowerCase() == 'post') {
+        if (method?.toLowerCase() == 'post' && !isExternalUrl(url)) {
             var token = getAntiforgeryToken();
             if (token) {
                 // INFO: must be called after .open()
                 this.setRequestHeader("X-XSRF-Token", encodeURIComponent(token));
             }
+        }
+
+        function isExternalUrl(url) {
+            const mergedUrl = new URL(url, window.location.href);
+            return mergedUrl.host !== window.location.host || mergedUrl.protocol !== window.location.protocol;
         }
     };
 
@@ -41,7 +46,6 @@
 
         return this;
     };
-
 
     $.fn.postData = function (options) {
         function createAndSubmitForm(opts) {

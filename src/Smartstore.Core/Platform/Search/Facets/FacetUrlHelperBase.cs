@@ -24,7 +24,9 @@ namespace Smartstore.Core.Search.Facets
 
         public virtual string Add(params Facet[] facets)
         {
-            var qs = new MutableQueryCollection(InitialQuery);
+            // Remove page index (i) from query string.
+            var qs = new MutableQueryCollection(InitialQuery)
+                .Remove("i");
 
             foreach (var facet in facets)
             {
@@ -40,7 +42,9 @@ namespace Smartstore.Core.Search.Facets
 
         public virtual string Remove(params Facet[] facets)
         {
-            var qs = new MutableQueryCollection(InitialQuery);
+            // Remove page index (i) from query string.
+            var qs = new MutableQueryCollection(InitialQuery)
+                .Remove("i");
 
             foreach (var facet in facets)
             {

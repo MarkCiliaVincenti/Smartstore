@@ -1,36 +1,58 @@
-﻿using System.Globalization;
+﻿#nullable enable
+
+using System.Globalization;
 using System.Runtime.Serialization;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Html;
+using Newtonsoft.Json;
 
 namespace Smartstore.Core.Localization
 {
-    // TODO: (core) Make LocalizedValue cacheable/serializable somehow.
-
     public abstract class LocalizedValue
     {
         // Regex for all types of brackets which need to be "swapped": ({[]})
         private readonly static Regex _rgBrackets = new(@"\(|\{|\[|\]|\}|\)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        private readonly Language _requestLanguage;
-        private readonly Language _currentLanguage;
-
-        protected LocalizedValue(Language requestLanguage, Language currentLanguage)
+        protected LocalizedValue(ILanguage? requestLanguage, ILanguage? currentLanguage)
         {
-            _requestLanguage = requestLanguage;
-            _currentLanguage = currentLanguage;
+            RequestLanguage = ToLanguageInfo(requestLanguage);
+            CurrentLanguage = ToLanguageInfo(currentLanguage);
         }
 
-        [IgnoreDataMember]
-        public Language RequestLanguage => _requestLanguage;
+        protected static LanguageInfo? ToLanguageInfo(ILanguage? language)
+        {
+            if (language is null) 
+            {
+                return null;
+            }
+            
+            if (language is LanguageInfo info) 
+            {
+                return info;
+            }
+            
+            return new LanguageInfo
+            {
+                Id = language.Id,
+                Name = language.Name,
+                LanguageCulture = language.LanguageCulture,
+                UniqueSeoCode = language.UniqueSeoCode,
+                Rtl = language.Rtl
+            };
+        }
+
+        [DataMember, JsonProperty]
+        public LanguageInfo? RequestLanguage { get; private set; }
+
+        [DataMember, JsonProperty]
+        public LanguageInfo? CurrentLanguage { get; private set; }
 
         [IgnoreDataMember]
-        public Language CurrentLanguage => _currentLanguage;
+        public bool IsFallback => RequestLanguage != CurrentLanguage;
 
-        public bool IsFallback => _requestLanguage != _currentLanguage;
-
-        public bool BidiOverride => _requestLanguage != _currentLanguage && _requestLanguage?.Rtl != _currentLanguage?.Rtl;
+        [IgnoreDataMember]
+        public bool BidiOverride => RequestLanguage?.Id != CurrentLanguage?.Id && RequestLanguage?.Rtl != CurrentLanguage?.Rtl;
 
         /// <summary>
         /// Fixes the flow of brackets within a text if the current page language has RTL flow.
@@ -38,15 +60,15 @@ namespace Smartstore.Core.Localization
         /// <param name="str">The test to fix.</param>
         /// <param name="currentLanguage">Current language</param>
         /// <returns></returns>
-        public static string FixBrackets(string str, Language currentLanguage)
+        public static string? FixBrackets(string? str, ILanguage currentLanguage)
         {
-            if (!currentLanguage.Rtl || str.IsEmpty())
+            if (!currentLanguage.Rtl || str!.IsEmpty())
             {
                 return str;
             }
 
             var controlChar = "&lrm;";
-            return _rgBrackets.Replace(str, m =>
+            return _rgBrackets.Replace(str!, m =>
             {
                 return controlChar + m.Value + controlChar;
             });
@@ -55,26 +77,34 @@ namespace Smartstore.Core.Localization
 
     public class LocalizedValue<T> : LocalizedValue, IHtmlContent, IEquatable<LocalizedValue<T>>, IComparable, IComparable<LocalizedValue<T>>
     {
-        private T _value;
-
-        internal LocalizedValue(T value) : this(value, null, null)
+        [JsonConstructor]
+        internal LocalizedValue()
+            : base(null, null)
         {
+            // For serialization
         }
 
-        public LocalizedValue(T value, Language requestLanguage, Language currentLanguage)
+        internal LocalizedValue(T value) 
+            : base(null, null)
+        {
+            Value = value;
+        }
+
+        public LocalizedValue(T? value, ILanguage? requestLanguage, ILanguage? currentLanguage)
             : base(requestLanguage, currentLanguage)
         {
-            _value = value;
+            Value = value;
         }
 
-        public T Value => _value;
+        [DataMember, JsonProperty]
+        public T? Value { get; private set; }
 
-        public void ChangeValue(T value)
+        public void ChangeValue(T? value)
         {
-            _value = value;
+            Value = value;
         }
 
-        public static implicit operator T(LocalizedValue<T> obj)
+        public static implicit operator T?(LocalizedValue<T> obj)
         {
             if (obj == null)
             {
@@ -84,53 +114,53 @@ namespace Smartstore.Core.Localization
             return obj.Value;
         }
 
-        public string ToHtmlString()
+        public string? ToHtmlString()
             => ToString();
 
         public void WriteTo(TextWriter writer, HtmlEncoder encoder)
             => writer.Write(ToString());
 
-        public override string ToString()
+        public override string? ToString()
         {
-            if (_value == null)
+            if (Value == null)
             {
                 return null;
             }
 
             if (typeof(T) == typeof(string))
             {
-                return _value as string;
+                return Value as string;
             }
 
-            return _value.Convert<string>(CultureInfo.GetCultureInfo(CurrentLanguage?.LanguageCulture ?? "en-US"));
+            return Value.Convert<string>(CultureInfo.GetCultureInfo(CurrentLanguage?.LanguageCulture ?? "en-US"));
         }
 
         public override int GetHashCode()
         {
-            return _value?.GetHashCode() ?? 0;
+            return Value?.GetHashCode() ?? 0;
         }
 
-        public override bool Equals(object other)
+        public override bool Equals(object? other)
         {
             return Equals(other as LocalizedValue<T>);
         }
 
-        public bool Equals(LocalizedValue<T> other)
+        public bool Equals(LocalizedValue<T>? other)
         {
             if (other is null)
                 return false;
             if (ReferenceEquals(this, other))
                 return true;
 
-            return Equals(_value, other._value);
+            return Equals(Value, other.Value);
         }
 
-        public int CompareTo(object other)
+        public int CompareTo(object? other)
         {
             return CompareTo(other as LocalizedValue<T>);
         }
 
-        public int CompareTo(LocalizedValue<T> other)
+        public int CompareTo(LocalizedValue<T>? other)
         {
             if (other == null)
             {
