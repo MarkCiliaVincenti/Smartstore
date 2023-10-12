@@ -52,9 +52,13 @@
                 ThemeVarEditor("yiq-text-light");
                 ThemeVarEditor("text-muted");
                 ThemeVarEditor("link-color");
-
                 ThemeVarEditor("btn-secondary-bg", "");
-                ThemeVarEditor("btn-secondary-border");
+
+                ThemeVarEditor("border-radius", "Borders");
+                ThemeVarEditor("border-radius-sm");
+                ThemeVarEditor("border-radius-lg");
+                ThemeVarEditor("border-radius-xl");
+                ThemeVarEditor("border-radius-xxl");
             }
         </div>
     </tab>
@@ -93,10 +97,8 @@
             </div>
 
             <div class="adminRow">
-                <div class="alert alert-info w-100 mb-0 alert-dismissable">
-                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
+                <div class="alert alert-info w-100 mb-0 alert-dismissible">
+                    <button type="button" class="btn-close" data-dismiss="alert" aria-label="Close"></button>
                     @Html.Raw(T("Admin.Theme.GoogleFonts.Hint"))
                 </div>
             </div>
@@ -118,7 +120,9 @@
         <div class="adminContent">
             @{
                 ThemeVarEditor("header-bg", "Header");
+                ThemeVarEditor("header-color");
                 ThemeVarEditor("shopbar-label");
+                ThemeVarEditor("header-color-muted");
 
                 ThemeVarEditor("inverse-menubar", "");
                 ThemeVarEditor("menubar-bg");
@@ -143,13 +147,15 @@
                 ThemeVarEditor("megamenu-rotator-bg");
 
                 ThemeVarEditor("searchbox-pill", "Searchbox");
+                ThemeVarEditor("searchbox-shadow");
                 ThemeVarEditor("searchbox-bg-1");
                 ThemeVarEditor("searchbox-bg-2");
-                ThemeVarEditor("searchbox-bg-3");
-                ThemeVarEditor("searchbox-border-color");
-                ThemeVarEditor("searchbox-border-active-color");
-                ThemeVarEditor("search-button-style");
-                ThemeVarEditor("search-button-flat");
+                ThemeVarEditor("searchbox-bg-mobile");
+                ThemeVarEditor("searchbox-color-1");
+                ThemeVarEditor("searchbox-color-2");
+                ThemeVarEditor("searchbox-border-1");
+                ThemeVarEditor("searchbox-border-2");
+                ThemeVarEditor("searchbox-border-mobile");
                 ThemeVarEditor("searchbox-hit-tag-color");
 
                 ThemeVarEditor("inverse-footer", "Footer");
@@ -172,6 +178,7 @@
                 ThemeVarEditor("card-bg");
 
                 ThemeVarEditor("dropdown-bg", "Dropdowns");
+                ThemeVarEditor("dropdown-color");
                 ThemeVarEditor("dropdown-border-color");
                 ThemeVarEditor("dropdown-border-radius");
                 ThemeVarEditor("dropdown-divider-bg");

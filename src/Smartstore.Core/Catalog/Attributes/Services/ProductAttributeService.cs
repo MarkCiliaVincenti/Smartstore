@@ -12,9 +12,7 @@ namespace Smartstore.Core.Catalog.Attributes
         private readonly SmartDbContext _db;
         private readonly ILocalizedEntityService _localizedEntityService;
 
-        public ProductAttributeService(
-            SmartDbContext db,
-            ILocalizedEntityService localizedEntityService)
+        public ProductAttributeService(SmartDbContext db, ILocalizedEntityService localizedEntityService)
         {
             _db = db;
             _localizedEntityService = localizedEntityService;
@@ -22,7 +20,7 @@ namespace Smartstore.Core.Catalog.Attributes
 
         public virtual async Task<Multimap<string, int>> GetExportFieldMappingsAsync(string fieldPrefix)
         {
-            Guard.NotEmpty(fieldPrefix, nameof(fieldPrefix));
+            Guard.NotEmpty(fieldPrefix);
 
             var result = new Multimap<string, int>(StringComparer.OrdinalIgnoreCase);
 
@@ -63,9 +61,9 @@ namespace Smartstore.Core.Catalog.Attributes
             int productAttributeOptionsSetId,
             bool deleteExistingValues)
         {
-            Guard.NotNull(productVariantAttribute, nameof(productVariantAttribute));
-            Guard.NotZero(productVariantAttribute.Id, nameof(productVariantAttribute.Id));
-            Guard.NotZero(productAttributeOptionsSetId, nameof(productAttributeOptionsSetId));
+            Guard.NotNull(productVariantAttribute);
+            Guard.NotZero(productVariantAttribute.Id);
+            Guard.NotZero(productAttributeOptionsSetId);
 
             var clearLocalizedEntityCache = false;
             var pvavName = nameof(ProductVariantAttributeValue);
@@ -78,13 +76,13 @@ namespace Smartstore.Core.Catalog.Attributes
                     .Select(x => x.Id)
                     .ToArray();
 
-                if (pvavIds.Any())
+                if (pvavIds.Length > 0)
                 {
                     _db.ProductVariantAttributeValues.RemoveRange(productVariantAttribute.ProductVariantAttributeValues);
                     await _db.SaveChangesAsync();
 
                     var oldLocalizedProperties = await _localizedEntityService.GetLocalizedPropertyCollectionAsync(pvavName, pvavIds);
-                    if (oldLocalizedProperties.Any())
+                    if (oldLocalizedProperties.Count > 0)
                     {
                         clearLocalizedEntityCache = true;
 
@@ -99,7 +97,7 @@ namespace Smartstore.Core.Catalog.Attributes
                 .Where(x => x.ProductAttributeOptionsSetId == productAttributeOptionsSetId)
                 .ToListAsync();
 
-            if (!optionsToCopy.Any())
+            if (optionsToCopy.Count == 0)
             {
                 return 0;
             }
@@ -122,7 +120,7 @@ namespace Smartstore.Core.Catalog.Attributes
                 }
             }
 
-            if (!newValues.Any())
+            if (newValues.Count == 0)
             {
                 return 0;
             }
@@ -174,7 +172,7 @@ namespace Smartstore.Core.Catalog.Attributes
 
         public virtual Task<ICollection<int>> GetAttributeCombinationFileIdsAsync(Product product)
         {
-            Guard.NotNull(product, nameof(product));
+            Guard.NotNull(product);
 
             if (!_db.IsCollectionLoaded(product, x => x.ProductVariantAttributeCombinations))
             {
@@ -206,7 +204,7 @@ namespace Smartstore.Core.Catalog.Attributes
 
         private static ICollection<int> CreateFileIdSet(List<string> source)
         {
-            if (!source.Any())
+            if (source.Count == 0)
             {
                 return new HashSet<int>();
             }
@@ -239,7 +237,7 @@ namespace Smartstore.Core.Catalog.Attributes
                 .OrderBy(x => x.DisplayOrder)
                 .ToListAsync();
 
-            if (!attributes.Any())
+            if (attributes.Count == 0)
             {
                 return 0;
             }
@@ -256,14 +254,14 @@ namespace Smartstore.Core.Catalog.Attributes
                 .Where(x => x.ProductVariantAttributeValues.Any())
                 .Each(x => toCombine.Add(x.ProductVariantAttributeValues.ToList()));
 
-            if (!toCombine.Any())
+            if (toCombine.Count == 0)
             {
                 return 0;
             }
 
             CombineAll(0, tmpValues);
 
-            var addedCombinations = 0;
+            var numAdded = 0;
 
             using (var scope = new DbContextScope(_db, autoDetectChanges: false, minHookImportance: HookImportance.Important))
             {
@@ -276,19 +274,22 @@ namespace Smartstore.Core.Catalog.Attributes
                         attributeSelection.AddAttributeValue(mappedAttributes[value.Id].Id, value.Id);
                     }
 
-                    var combination = new ProductVariantAttributeCombination
+                    _db.ProductVariantAttributeCombinations.Add(new()
                     {
                         ProductId = productId,
                         RawAttributes = attributeSelection.AsJson(),
                         StockQuantity = 10000,
                         AllowOutOfStockOrders = true,
                         IsActive = true
-                    };
+                    });
 
-                    _db.ProductVariantAttributeCombinations.Add(combination);
+                    if ((++numAdded % 100) == 0)
+                    {
+                        await scope.CommitAsync();
+                    }
                 }
 
-                addedCombinations = await scope.CommitAsync();
+                await scope.CommitAsync();
             }
 
             //foreach (var y in resultMatrix)
@@ -301,7 +302,7 @@ namespace Smartstore.Core.Catalog.Attributes
             //	sb.ToString().Dump();
             //}
 
-            return addedCombinations;
+            return numAdded;
 
             void CombineAll(int row, List<ProductVariantAttributeValue> tmp)
             {

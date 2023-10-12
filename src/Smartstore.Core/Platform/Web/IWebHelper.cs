@@ -1,4 +1,6 @@
-﻿using System.Net;
+﻿#nullable enable
+
+using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 
@@ -6,13 +8,13 @@ namespace Smartstore.Core.Web
 {
     public partial interface IWebHelper
     {
-        HttpContext HttpContext { get; }
+        HttpContext? HttpContext { get; }
 
         /// <summary>
         /// Gets URL referrer or <c>null</c> if Uri parsing fails.
         /// </summary>
         /// <returns>URL referrer</returns>
-        Uri GetUrlReferrer();
+        Uri? GetUrlReferrer();
 
         /// <summary>
         /// Gets a unique client identifier
@@ -22,7 +24,7 @@ namespace Smartstore.Core.Web
         /// The client identifier is a hashed combination of client ip address and user agent.
         /// This method returns <c>null</c> if IP or user agent (or both) cannot be determined.
         /// </remarks>
-        string GetClientIdent();
+        string? GetClientIdent();
 
         /// <summary>
         /// Gets client IP address.
@@ -38,10 +40,9 @@ namespace Smartstore.Core.Web
         /// Gets the full URL of the current page (including scheme and host part)
         /// </summary>
         /// <param name="withQueryString">Value indicating whether to include query string part</param>
-        /// <param name="secured">Value indicating whether to get SSL protected page URL. Pass <c>null</c> to auto-determine scheme.</param>
         /// <param name="lowercaseUrl">Value indicating whether to lowercase URL</param>
         /// <returns>Page URL</returns>
-        string GetCurrentPageUrl(bool withQueryString = false, bool? secured = null, bool lowercaseUrl = false);
+        string GetCurrentPageUrl(bool withQueryString = false, bool lowercaseUrl = false);
 
         /// <summary>
         /// Gets a value indicating whether current connection is secured
@@ -59,9 +60,8 @@ namespace Smartstore.Core.Web
         /// <summary>
         /// Gets store location (Scheme + Host + PathBase)
         /// </summary>
-        /// <param name="secured">Value indicating whether to get SSL protected location. Pass <c>null</c> to auto-determine scheme.</param>
         /// <returns>Store location</returns>
-        string GetStoreLocation(bool? secured = null);
+        string GetStoreLocation();
 
         /// <summary>
         /// Returns true if the requested resource is one of the typical resources that don't need to be processed by the routing system.
@@ -81,28 +81,29 @@ namespace Smartstore.Core.Web
 
 
         /// <summary>
-        /// Modifies query string
+        /// Modifies a URL by merging a query string part and optionally removing a query parameter.
         /// </summary>
-        /// <param name="url">Url to modify</param>
-        /// <param name="queryStringModification">Query string modification, e.g. "param=value&amp;param2=value2"</param>
-        /// <param name="anchor">Add anchor part. Pass without hash char.</param>
+        /// <param name="url">URL to modify. Can be relative or absolute. May contain the query part. If <c>null</c>, the current page's URL is resolved (PathBase + Path + Query).</param>
+        /// <param name="queryModification">The new query string part (e.g. "page=10") to merge. Leading <c>?</c> char is optional.</param>
+        /// <param name="removeParamName">The name of a query param to remove.</param>
+        /// <param name="anchor">Optional anchor part to append. Pass without leading hash char.</param>
         /// <returns>Modified url</returns>
-        string ModifyQueryString(string url, string queryStringModification, string anchor = null);
+        string ModifyQueryString(string? url, string? queryModification, string? removeParamName = null, string? anchor = null);
 
         /// <summary>
         /// Remove query string from url
         /// </summary>
-        /// <param name="url">Url to modify</param>
+        /// <param name="uri">Url to modify</param>
         /// <param name="queryParam">Query param to remove</param>
         /// <returns>New url</returns>
-        string RemoveQueryParam(string url, string queryParam);
+        [Obsolete("Call 'ModifyQueryString()' and pass 'removeParamName' parameter.")]
+        string RemoveQueryParam(string? uri, string? queryParam);
 
         /// <summary>
         /// Gets query string value by name
         /// </summary>
-        /// <typeparam name="T"></typeparam>
         /// <param name="name">Parameter name</param>
         /// <returns>Query string value</returns>
-        T QueryString<T>(string name);
+        T? QueryString<T>(string name);
     }
 }

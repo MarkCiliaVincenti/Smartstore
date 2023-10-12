@@ -55,8 +55,8 @@ namespace Smartstore.Core.DataExchange.Import
 
         public async Task ImportAsync(DataImportRequest request, CancellationToken cancelToken = default)
         {
-            Guard.NotNull(request, nameof(request));
-            Guard.NotNull(cancelToken, nameof(cancelToken));
+            Guard.NotNull(request);
+            Guard.NotNull(cancelToken);
 
             var profile = await _services.DbContext.ImportProfiles.FindByIdAsync(request.ProfileId, false, cancelToken);
             if (!(profile?.Enabled ?? false))
@@ -68,10 +68,7 @@ namespace Smartstore.Core.DataExchange.Import
 
             try
             {
-                if (!request.HasPermission && !await HasPermission())
-                {
-                    throw new SecurityException("You do not have permission to perform the selected import.");
-                }
+                await CheckPermission(ctx);
 
                 var context = ctx.ExecuteContext;
                 var files = await _importProfileService.GetImportFilesAsync(profile, profile.ImportRelatedData);
@@ -151,6 +148,7 @@ namespace Smartstore.Core.DataExchange.Import
             catch (Exception ex)
             {
                 logger.ErrorsAll(ex);
+                ctx.ExecuteContext.Result.AddError(ex);
             }
             finally
             {
@@ -237,15 +235,21 @@ namespace Smartstore.Core.DataExchange.Import
         private async Task SendCompletionEmail(ImportProfile profile, DataImporterContext ctx)
         {
             var emailAccount = _emailAccountService.GetDefaultEmailAccount();
-            if (emailAccount.Host.IsEmpty())
+            if (emailAccount == null || emailAccount.Host.IsEmpty())
             {
                 return;
             }
 
             var result = ctx.ExecuteContext.Result;
-            var store = _services.StoreContext.CurrentStore;
-            var storeInfo = $"{store.Name} ({store.Url})";
 
+            if (_dataExchangeSettings.ImportCompletionEmail == DataExchangeCompletionEmail.Never ||
+                (_dataExchangeSettings.ImportCompletionEmail == DataExchangeCompletionEmail.OnError && !result.HasErrors))
+            {
+                return;
+            }
+
+            var store = _services.StoreContext.CurrentStore;
+            var storeInfo = $"{store.Name} ({store.GetBaseUrl()})";
             using var psb = StringBuilderPool.Instance.Get(out var body);
 
             body.Append(T("Admin.DataExchange.Import.CompletedEmail.Body", storeInfo));
@@ -283,12 +287,12 @@ namespace Smartstore.Core.DataExchange.Import
                 message.To.Add(new(_contactDataSettings.WebmasterEmailAddress));
             }
 
-            if (!message.To.Any() && _contactDataSettings.CompanyEmailAddress.HasValue())
+            if (message.To.Count == 0 && _contactDataSettings.CompanyEmailAddress.HasValue())
             {
                 message.To.Add(new(_contactDataSettings.CompanyEmailAddress));
             }
 
-            if (!message.To.Any())
+            if (message.To.Count == 0)
             {
                 message.To.Add(new(emailAccount.Email, emailAccount.DisplayName));
             }
@@ -414,16 +418,24 @@ namespace Smartstore.Core.DataExchange.Import
             }
         }
 
-        private async Task<bool> HasPermission()
+        private async Task CheckPermission(DataImporterContext ctx)
         {
+            if (ctx.Request.HasPermission)
+            {
+                return;
+            }
+
             var customer = _services.WorkContext.CurrentCustomer;
 
             if (customer.IsBackgroundTaskAccount())
             {
-                return true;
+                return;
             }
 
-            return await _services.Permissions.AuthorizeAsync(Permissions.Configuration.Import.Execute, customer);
+            if (!await _services.Permissions.AuthorizeAsync(Permissions.Configuration.Import.Execute, customer))
+            {
+                throw new SecurityException(await _services.Permissions.GetUnauthorizedMessageAsync(Permissions.Configuration.Import.Execute));
+            }
         }
 
         #endregion

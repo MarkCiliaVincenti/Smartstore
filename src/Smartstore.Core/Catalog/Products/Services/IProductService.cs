@@ -1,6 +1,7 @@
 ﻿using Smartstore.Collections;
 using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Checkout.Orders;
+using Smartstore.Core.Common;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Stores;
 
@@ -14,12 +15,12 @@ namespace Smartstore.Core.Catalog.Products
         /// <summary>
         /// Gets a product by SKU, GTIN or MPN.
         /// </summary>
-        /// <param name="identificationNumber">SKU, GTIN or MPN.</param>
+        /// <param name="code">SKU, GTIN or MPN.</param>
         /// <param name="includeHidden">A value indicating whether to include hidden products.</param>
         /// <param name="tracked">A value indicating whether to put prefetched entities to EF change tracker.</param>
         /// <returns>Found product or variant combination.</returns>
-        Task<(Product Product, ProductVariantAttributeCombination VariantCombination)> GetProductByIdentificationNumberAsync(
-            string identificationNumber,
+        Task<(Product Product, ProductVariantAttributeCombination VariantCombination)> GetProductByCodeAsync(
+            string code,
             bool includeHidden = false,
             bool tracked = false);
 
@@ -97,5 +98,19 @@ namespace Smartstore.Core.Catalog.Products
             Customer customer = null,
             bool includeHidden = true,
             bool loadMainMediaOnly = false);
+
+        /// <summary>
+        /// Restores soft-deleted products.
+        /// </summary>
+        /// <param name="productIds">Identifiers of products to restore.</param>
+        /// <param name="publishAfterRestore">A value indicating whether to publish restored products.</param>
+        /// <returns>Number of successfully restored products.</returns>
+        Task<int> RestoreProductsAsync(int[] productIds, bool? publishAfterRestore = null, CancellationToken cancelToken = default);
+
+        /// <summary>
+        /// Permanently deletes soft-deleted products.
+        /// </summary>
+        /// <param name="productIds">Identifiers of products to delete.</param>
+        Task<DeletionResult> DeleteProductsPermanentAsync(int[] productIds, CancellationToken cancelToken = default);
     }
 }

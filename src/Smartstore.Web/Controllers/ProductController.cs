@@ -1,9 +1,11 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using DotLiquid.FileSystems;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Routing;
 using Smartstore.Core.Catalog;
 using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Catalog.Products;
+using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Common.Configuration;
 using Smartstore.Core.Content.Media;
 using Smartstore.Core.Content.Menus;
@@ -16,6 +18,7 @@ using Smartstore.Core.Seo;
 using Smartstore.Core.Seo.Routing;
 using Smartstore.Core.Stores;
 using Smartstore.Core.Web;
+using Smartstore.Engine.Modularity;
 using Smartstore.Utilities.Html;
 using Smartstore.Web.Models.Catalog;
 using Smartstore.Web.Models.Catalog.Mappers;
@@ -42,11 +45,14 @@ namespace Smartstore.Web.Controllers
         private readonly CaptchaSettings _captchaSettings;
         private readonly LocalizationSettings _localizationSettings;
         private readonly PrivacySettings _privacySettings;
+        private readonly PaymentSettings _paymentSettings;
         private readonly Lazy<IMessageFactory> _messageFactory;
         private readonly Lazy<ProductUrlHelper> _productUrlHelper;
         private readonly Lazy<IProductAttributeFormatter> _productAttributeFormatter;
         private readonly Lazy<IProductAttributeMaterializer> _productAttributeMaterializer;
         private readonly Lazy<IStockSubscriptionService> _stockSubscriptionService;
+        private readonly Lazy<IProviderManager> _providerManager;
+        private readonly Lazy<ModuleManager> _moduleManager;
 
         public ProductController(
             SmartDbContext db,
@@ -67,11 +73,14 @@ namespace Smartstore.Web.Controllers
             CaptchaSettings captchaSettings,
             LocalizationSettings localizationSettings,
             PrivacySettings privacySettings,
+            PaymentSettings paymentSettings,
             Lazy<IMessageFactory> messageFactory,
             Lazy<ProductUrlHelper> productUrlHelper,
             Lazy<IProductAttributeFormatter> productAttributeFormatter,
             Lazy<IProductAttributeMaterializer> productAttributeMaterializer,
-            Lazy<IStockSubscriptionService> stockSubscriptionService)
+            Lazy<IStockSubscriptionService> stockSubscriptionService,
+            Lazy<IProviderManager> providerManager,
+            Lazy<ModuleManager> moduleManager)
         {
             _db = db;
             _webHelper = webHelper;
@@ -91,11 +100,14 @@ namespace Smartstore.Web.Controllers
             _captchaSettings = captchaSettings;
             _localizationSettings = localizationSettings;
             _privacySettings = privacySettings;
+            _paymentSettings = paymentSettings;
             _messageFactory = messageFactory;
             _productUrlHelper = productUrlHelper;
             _productAttributeFormatter = productAttributeFormatter;
             _productAttributeMaterializer = productAttributeMaterializer;
             _stockSubscriptionService = stockSubscriptionService;
+            _providerManager = providerManager;
+            _moduleManager = moduleManager;
         }
 
         #region Products
@@ -192,7 +204,65 @@ namespace Smartstore.Web.Controllers
                 });
             }
 
+            await PrepareAvailablePaymentMethodsAsync();
+
             return View(model.ProductTemplateViewPath, model);
+        }
+
+        /// <summary>
+        /// Prepares icons of payment methods for display on product detail pages 
+        /// configured in <see cref="PaymentSettings.ProductDetailPaymentMethodSystemNames"/>.
+        /// </summary>
+        private async Task PrepareAvailablePaymentMethodsAsync()
+        {
+            // Get available payment methods
+            if (!_paymentSettings.ProductDetailPaymentMethodSystemNames.HasValue())
+            {
+                return;
+            } 
+
+            // Store obtained data in memory cache
+            var cacheKey = PaymentService.ProductDetailPaymentIcons.FormatInvariant(Services.StoreContext.CurrentStore.Id);
+            ViewBag.AvailablePaymentMethods = await Services.Cache.GetAsync(cacheKey, () =>
+            {
+                // INFO: No Dictonary<string, string> here because key are not unique in the case a provider has multiple icons.
+                var paymentMethods = new List<(string FriendlyName, string Url)>();
+                    
+                // Get all providers.
+                var providers = _providerManager.Value.GetAllProviders<IPaymentMethod>();
+                var productDetailMethods = _paymentSettings.ProductDetailPaymentMethodSystemNames.Convert<string[]>();
+
+                foreach (var systemName in productDetailMethods)
+                {
+                    var provider = providers.Where(x => x.Metadata.SystemName == systemName).FirstOrDefault();
+
+                    // Check if provider is enabled.
+                    if (provider == null || !provider.IsPaymentProviderEnabled(_paymentSettings))
+                    {
+                        continue;
+                    }
+
+                    var friendlyName = _moduleManager.Value.GetLocalizedFriendlyName(provider.Metadata);
+                    var brandImage = _moduleManager.Value.GetBrandImage(provider.Metadata);
+
+                    if (brandImage != null)
+                    {
+                        if (!brandImage.NumberedImageUrls.IsNullOrEmpty())
+                        {
+                            foreach (var url in brandImage.NumberedImageUrls)
+                            {
+                                paymentMethods.Add((friendlyName, url));
+                            }
+                        }
+                        else if (brandImage.DefaultImageUrl != null)
+                        {
+                            paymentMethods.Add((friendlyName, brandImage.DefaultImageUrl));
+                        }
+                    }
+                }
+
+                return paymentMethods;
+            });
         }
 
         /// <summary>
@@ -276,7 +346,9 @@ namespace Smartstore.Web.Controllers
             var product = await _db.Products.FindByIdAsync(productId);
             var batchContext = _productService.CreateProductBatchContext(new[] { product }, includeHidden: false);
             var bundleItem = await _db.ProductBundleItem
+                .Include(x => x.Product)
                 .Include(x => x.BundleProduct)
+                .Include(x => x.AttributeFilters)
                 .FindByIdAsync(bundleItemId, false);
 
             // Quantity required for tier prices.
@@ -301,7 +373,7 @@ namespace Smartstore.Web.Controllers
 
             // Get merged model data.
             var model = new ProductDetailsModel();
-            await _helper.PrepareProductDetailModelAsync(model, modelContext, quantity);
+            await _helper.PrepareProductDetailModelAsync(model, modelContext, quantity, callCustomMapper: true);
 
             if (bundleItem != null)
             {
@@ -504,8 +576,8 @@ namespace Smartstore.Web.Controllers
                     ProductId = product.Id,
                     CustomerId = customer.Id,
                     IpAddress = _webHelper.GetClientIpAddress().ToString(),
-                    Title = model.Title,
-                    ReviewText = model.ReviewText,
+                    Title = model.Title?.RemoveHtml(),
+                    ReviewText = HtmlUtility.SanitizeHtml(model.ReviewText, HtmlSanitizerOptions.UserCommentSuitable),
                     Rating = rating,
                     HelpfulYesTotal = 0,
                     HelpfulNoTotal = 0,
@@ -722,11 +794,8 @@ namespace Smartstore.Web.Controllers
                 formattedAttributes = await _productAttributeFormatter.Value.FormatAttributesAsync(
                     selection,
                     product,
-                    customer: null,
-                    separator: ", ",
-                    includePrices: false,
-                    includeGiftCardAttributes: false,
-                    includeHyperlinks: false);
+                    ProductAttributeFormatOptions.PlainText,
+                    customer: null);
             }
 
             var seName = await product.GetActiveSlugAsync();

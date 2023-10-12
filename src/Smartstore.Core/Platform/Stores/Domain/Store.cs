@@ -1,9 +1,12 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Runtime.CompilerServices;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Smartstore.Core.Common;
 using Smartstore.Data.Caching;
+using Smartstore.Http;
 
 namespace Smartstore.Core.Stores
 {
@@ -11,13 +14,13 @@ namespace Smartstore.Core.Stores
     {
         public void Configure(EntityTypeBuilder<Store> builder)
         {
+#pragma warning disable CS0618
             builder
                 .HasOne(x => x.DefaultCurrency)
                 .WithMany()
                 .HasForeignKey(x => x.DefaultCurrencyId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-#pragma warning disable CS0618
             builder
                 .HasOne(x => x.PrimaryExchangeRateCurrency)
                 .WithMany()
@@ -39,26 +42,70 @@ namespace Smartstore.Core.Stores
         [Required, StringLength(400)]
         public string Name { get; set; }
 
+        private string _url;
         /// <summary>
         /// Gets or sets the store URL
         /// </summary>
         [Required, StringLength(400)]
-        public string Url { get; set; }
+        public string Url 
+        {
+            get => _url;
+            set
+            {
+                if (_url != value)
+                {
+                    _url = value;
+                    _baseUri = null;
+                }
+            }
+        }
 
+        private bool _sslEnabled;
         /// <summary>
         /// Gets or sets a value indicating whether SSL is enabled
         /// </summary>
-        public bool SslEnabled { get; set; }
+        public bool SslEnabled
+        {
+            get => _sslEnabled;
+            set
+            {
+                if (_sslEnabled != value)
+                {
+                    _sslEnabled = value;
+                    _baseUri = null;
+                }
+            }
+        }
+
+        private int? _sslPort;
+        /// <summary>
+        /// Gets or sets the SSL port for secure connections.
+        /// Should be null if port is default (443).
+        /// </summary>
+        public int? SslPort
+        {
+            get => _sslPort;
+            set
+            {
+                if (_sslPort != value)
+                {
+                    _sslPort = value;
+                    _baseUri = null;
+                }
+            }
+        }
 
         /// <summary>
         /// Gets or sets the store secure URL (HTTPS)
         /// </summary>
         [StringLength(400)]
+        [Obsolete("Secure URL now is URL + SslPort")]
         public string SecureUrl { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether all pages will be forced to use SSL (no matter of a specified [RequireHttpsByConfigAttribute] attribute)
+        /// Gets or sets a value indicating whether all pages are forced to use SSL.
         /// </summary>
+        [Obsolete("SSL applies to all pages by default now (if enabled).")]
         public bool ForceSslForAllPages { get; set; }
 
         /// <summary>
@@ -128,6 +175,7 @@ namespace Smartstore.Core.Stores
         /// <summary>
         /// Gets or sets the default currency.
         /// </summary>
+        [Obsolete("Use ICurrencyService.PrimaryCurrency")]
         public Currency DefaultCurrency
         {
             get => _defaultCurrency ?? LazyLoader.Load(this, ref _defaultCurrency);
@@ -151,42 +199,42 @@ namespace Smartstore.Core.Stores
         /// </summary>
         public bool SupportsHttps()
         {
-            if (SslEnabled)
-            {
-                return Url.StartsWith("https") || (SecureUrl.HasValue() && SecureUrl.StartsWith("https"));
-            }
+            return SslEnabled || Url.StartsWith("https");
+        }
 
-            return false;
+        private Uri _baseUri;
+        /// <summary>
+        /// Gets the store's base URI (Scheme + Host + PathBase + /).
+        /// </summary>
+        /// <returns>The store base URI</returns>
+        public Uri GetBaseUri()
+        {
+            LazyInitializer.EnsureInitialized(ref _baseUri, () =>
+            {
+                var url = Url;
+                if (SslEnabled && !url.StartsWith("https"))
+                {
+                    var httpBaseUri = new Uri(url.EnsureEndsWith('/'));
+                    var httpsPort = SslPort ?? WebHelper.GetServerHttpsPort();
+                    var host = httpsPort == -1 || httpsPort == 443
+                        ? new HostString(httpBaseUri.Host)
+                        : new HostString(httpBaseUri.Host, httpsPort);
+
+                    url = "https://" + host + httpBaseUri.AbsolutePath;
+                }
+
+                return new Uri(url.EnsureEndsWith('/'));
+            });
+
+            return _baseUri;
         }
 
         /// <summary>
-        /// Gets the store host name (Scheme + Host + /)
+        /// Gets the store's base URL (Scheme + Host + PathBase + /).
         /// </summary>
-        /// <param name="secure">
-        /// If <c>false</c>, returns the default unsecured url.
-        /// If <c>true</c>, returns the secure url, but only if SSL is enabled for the store.
-        /// </param>
-        /// <returns>The host name</returns>
-        public string GetHost(bool secure)
-        {
-            string host;
-            if (secure && SslEnabled)
-            {
-                if (!string.IsNullOrWhiteSpace(SecureUrl))
-                {
-                    host = SecureUrl;
-                }
-                else
-                {
-                    host = Url.Replace("http:/", "https:/");
-                }
-            }
-            else
-            {
-                host = Url;
-            }
-
-            return host.EnsureEndsWith('/');
-        }
+        /// <returns>The store base URL</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public string GetBaseUrl()
+            => GetBaseUri().ToString();
     }
 }

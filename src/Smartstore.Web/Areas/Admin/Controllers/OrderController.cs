@@ -123,9 +123,9 @@ namespace Smartstore.Admin.Controllers
         [Permission(Permissions.Order.Read)]
         public async Task<IActionResult> List()
         {
-            var allPaymentMethods = await _paymentService.LoadAllPaymentMethodsAsync();
+            var allPaymentProviders = await _paymentService.LoadAllPaymentProvidersAsync();
 
-            var paymentMethods = allPaymentMethods
+            var paymentProviders = allPaymentProviders
                 .Select(x => new SelectListItem
                 {
                     Text = (_moduleManager.GetLocalizedFriendlyName(x.Metadata).NullEmpty() ?? x.Metadata.FriendlyName.NullEmpty() ?? x.Metadata.SystemName).EmptyNull(),
@@ -133,17 +133,17 @@ namespace Smartstore.Admin.Controllers
                 })
                 .ToList();
 
-            var paymentMethodsCounts = paymentMethods
+            var paymentProvidersCounts = paymentProviders
                 .GroupBy(x => x.Text)
                 .Select(x => new { Name = x.Key.EmptyNull(), Count = x.Count() })
                 .ToDictionarySafe(x => x.Name, x => x.Count);
 
             // Append system name if there are payment methods with the same friendly name.
-            paymentMethods = paymentMethods
+            paymentProviders = paymentProviders
                 .OrderBy(x => x.Text)
                 .Select(x =>
                 {
-                    if (paymentMethodsCounts.TryGetValue(x.Text, out var count) && count > 1)
+                    if (paymentProvidersCounts.TryGetValue(x.Text, out var count) && count > 1)
                     {
                         x.Text = $"{x.Text} ({x.Value})";
                     }
@@ -152,7 +152,7 @@ namespace Smartstore.Admin.Controllers
                 })
                 .ToList();
 
-            ViewBag.PaymentMethods = paymentMethods;
+            ViewBag.PaymentMethods = paymentProviders;
             ViewBag.Stores = Services.StoreContext.GetAllStores().ToSelectListItems();
             ViewBag.HideProfitReport = false;
 
@@ -237,7 +237,7 @@ namespace Smartstore.Admin.Controllers
                 .Where(x => x.PaymentMethodSystemName.HasValue())
                 .Select(x => x.PaymentMethodSystemName)
                 .Distinct()
-                .SelectAwait(async x => await _paymentService.LoadPaymentMethodBySystemNameAsync(x))
+                .SelectAwait(async x => await _paymentService.LoadPaymentProviderBySystemNameAsync(x))
                 .AsyncToList();
 
             var paymentMethodsDic = paymentMethods
@@ -344,7 +344,7 @@ namespace Smartstore.Admin.Controllers
                 return RedirectToAction(nameof(Edit), new { id = orderId });
             }
 
-            NotifyWarning(T("Admin.Order.NotFound"));
+            NotifyWarning(T("Order.NotFound", orderNumber));
 
             return RedirectToAction(nameof(List));
         }
@@ -364,20 +364,21 @@ namespace Smartstore.Admin.Controllers
         {
             var ids = selectedIds.ToIntArray();
             var orders = await _db.Orders
+                .Include(x => x.Shipments)
                 .IncludeCustomer(true)
                 .IncludeOrderItems()
                 .Where(x => ids.Contains(x.Id))
                 .ToListAsync();
 
-            if (!orders.Any() || operation.IsEmpty())
+            if (orders.Count == 0 || operation.IsEmpty())
             {
                 return RedirectToReferrer(null, () => RedirectToAction(nameof(List)));
             }
 
             const int maxErrors = 3;
-            var success = 0;
-            var skipped = 0;
-            var errors = 0;
+            var numSuccess = 0;
+            var numSkipped = 0;
+            var numErrors = 0;
             var errorMessages = new HashSet<string>();
             var succeededOrderNumbers = new HashSet<string>();
 
@@ -385,116 +386,142 @@ namespace Smartstore.Admin.Controllers
             {
                 try
                 {
-                    var succeeded = false;
-
                     switch (operation)
                     {
                         case "cancel":
                             if (o.CanCancelOrder())
                             {
                                 await _orderProcessingService.CancelOrderAsync(o, true);
-                                succeeded = true;
+                                ++numSuccess;
+                                succeededOrderNumbers.Add(o.GetOrderNumber());
                             }
                             else
                             {
-                                ++skipped;
+                                ++numSkipped;
                             }
                             break;
                         case "complete":
                             if (o.CanCompleteOrder())
                             {
                                 await _orderProcessingService.CompleteOrderAsync(o);
-                                succeeded = true;
+                                ++numSuccess;
+                                succeededOrderNumbers.Add(o.GetOrderNumber());
                             }
                             else
                             {
-                                ++skipped;
+                                ++numSkipped;
+                            }
+                            break;
+                        case "ship":
+                        case "deliver":
+                            if (o.ShippingStatus != ShippingStatus.ShippingNotRequired && o.ShippingAddressId != 0)
+                            {
+                                var ship = operation == "ship";
+                                if (o.Shipments.Count > 0)
+                                {
+                                    foreach (var shipment in o.Shipments)
+                                    {
+                                        if (ship && shipment.ShippedDateUtc == null)
+                                        {
+                                            await _orderProcessingService.ShipAsync(shipment, true);
+                                        }
+                                        else if (!ship && shipment.ShippedDateUtc != null && shipment.DeliveryDateUtc == null)
+                                        {
+                                            await _orderProcessingService.DeliverAsync(shipment, true);
+                                        }
+                                    }
+
+                                    ++numSuccess;
+                                    succeededOrderNumbers.Add(o.GetOrderNumber());
+                                }
+                                else
+                                {
+                                    ++numSkipped;
+                                }
+                            }
+                            else
+                            {
+                                ++numSkipped;
                             }
                             break;
                         case "markpaid":
                             if (o.CanMarkOrderAsPaid())
                             {
                                 await _orderProcessingService.MarkOrderAsPaidAsync(o);
-                                succeeded = true;
+                                ++numSuccess;
+                                succeededOrderNumbers.Add(o.GetOrderNumber());
                             }
                             else
                             {
-                                ++skipped;
+                                ++numSkipped;
                             }
                             break;
                         case "capture":
                             if (await _orderProcessingService.CanCaptureAsync(o))
                             {
-                                var captureErrors = await _orderProcessingService.CaptureAsync(o);
-                                errorMessages.AddRange(captureErrors);
-                                if (!captureErrors.Any())
-                                    succeeded = true;
+                                await _orderProcessingService.CaptureAsync(o);
+                                ++numSuccess;
+                                succeededOrderNumbers.Add(o.GetOrderNumber());
                             }
                             else
                             {
-                                ++skipped;
+                                ++numSkipped;
                             }
                             break;
                         case "refundoffline":
                             if (o.CanRefundOffline())
                             {
                                 await _orderProcessingService.RefundOfflineAsync(o);
-                                succeeded = true;
+                                ++numSuccess;
+                                succeededOrderNumbers.Add(o.GetOrderNumber());
                             }
                             else
                             {
-                                ++skipped;
+                                ++numSkipped;
                             }
                             break;
                         case "refund":
                             if (await _orderProcessingService.CanRefundAsync(o))
                             {
-                                var refundErrors = await _orderProcessingService.RefundAsync(o);
-                                errorMessages.AddRange(refundErrors);
-                                if (!refundErrors.Any())
-                                    succeeded = true;
+                                await _orderProcessingService.RefundAsync(o);
+                                ++numSuccess;
+                                succeededOrderNumbers.Add(o.GetOrderNumber());
                             }
                             else
                             {
-                                ++skipped;
+                                ++numSkipped;
                             }
                             break;
                         case "voidoffline":
                             if (o.CanVoidOffline())
                             {
                                 await _orderProcessingService.VoidOfflineAsync(o);
-                                succeeded = true;
+                                ++numSuccess;
+                                succeededOrderNumbers.Add(o.GetOrderNumber());
                             }
                             else
                             {
-                                ++skipped;
+                                ++numSkipped;
                             }
                             break;
                         case "void":
                             if (await _orderProcessingService.CanVoidAsync(o))
                             {
-                                var voidErrors = await _orderProcessingService.VoidAsync(o);
-                                errorMessages.AddRange(voidErrors);
-                                if (!voidErrors.Any())
-                                    succeeded = true;
+                                await _orderProcessingService.VoidAsync(o);
+                                ++numSuccess;
+                                succeededOrderNumbers.Add(o.GetOrderNumber());
                             }
                             else
                             {
-                                ++skipped;
+                                ++numSkipped;
                             }
                             break;
-                    }
-
-                    if (succeeded)
-                    {
-                        ++success;
-                        succeededOrderNumbers.Add(o.GetOrderNumber());
                     }
                 }
                 catch (Exception ex)
                 {
                     errorMessages.Add(ex.Message);
-                    if (++errors <= maxErrors)
+                    if (++numErrors <= maxErrors)
                     {
                         Logger.Error(ex);
                     }
@@ -502,12 +529,12 @@ namespace Smartstore.Admin.Controllers
             }
 
             var msg = new StringBuilder((errorMessages.Count * 100) + 100);
-            msg.Append(T("Admin.Orders.ProcessingResult", success, ids.Length, skipped, skipped == 0 ? " class='hide'" : string.Empty));
+            msg.Append(T("Admin.Orders.ProcessingResult", numSuccess, ids.Length, numSkipped, numSkipped == 0 ? " class='hide'" : string.Empty));
             errorMessages.Take(maxErrors).Each(x => msg.Append($"<div class='text-danger mt-2'>{x}</div>"));
 
             NotifyInfo(msg.ToString());
 
-            if (succeededOrderNumbers.Any())
+            if (succeededOrderNumbers.Count > 0)
             {
                 Services.ActivityLogger.LogActivity(KnownActivityLogTypes.EditOrder, T("ActivityLog.EditOrder"), string.Join(", ", succeededOrderNumbers.OrderBy(x => x)));
             }
@@ -578,16 +605,9 @@ namespace Smartstore.Admin.Controllers
 
             try
             {
-                var errors = await _orderProcessingService.CaptureAsync(order);
+                await _orderProcessingService.CaptureAsync(order);
 
-                if (errors.Count > 0)
-                {
-                    errors.Each(x => NotifyError(x));
-                }
-                else
-                {
-                    Services.ActivityLogger.LogActivity(KnownActivityLogTypes.EditOrder, T("ActivityLog.EditOrder"), order.GetOrderNumber());
-                }
+                Services.ActivityLogger.LogActivity(KnownActivityLogTypes.EditOrder, T("ActivityLog.EditOrder"), order.GetOrderNumber());
             }
             catch (Exception ex)
             {
@@ -636,16 +656,9 @@ namespace Smartstore.Admin.Controllers
 
             try
             {
-                var errors = await _orderProcessingService.RefundAsync(order);
+                await _orderProcessingService.RefundAsync(order);
 
-                if (errors.Count > 0)
-                {
-                    errors.Each(x => NotifyError(x));
-                }
-                else
-                {
-                    Services.ActivityLogger.LogActivity(KnownActivityLogTypes.EditOrder, T("ActivityLog.EditOrder"), order.GetOrderNumber());
-                }
+                Services.ActivityLogger.LogActivity(KnownActivityLogTypes.EditOrder, T("ActivityLog.EditOrder"), order.GetOrderNumber());
             }
             catch (Exception ex)
             {
@@ -694,16 +707,9 @@ namespace Smartstore.Admin.Controllers
 
             try
             {
-                var errors = await _orderProcessingService.VoidAsync(order);
+                await _orderProcessingService.VoidAsync(order);
 
-                if (errors.Count > 0)
-                {
-                    errors.Each(x => NotifyError(x));
-                }
-                else
-                {
-                    Services.ActivityLogger.LogActivity(KnownActivityLogTypes.EditOrder, T("ActivityLog.EditOrder"), order.GetOrderNumber());
-                }
+                Services.ActivityLogger.LogActivity(KnownActivityLogTypes.EditOrder, T("ActivityLog.EditOrder"), order.GetOrderNumber());
             }
             catch (Exception ex)
             {
@@ -788,15 +794,8 @@ namespace Smartstore.Admin.Controllers
                     }
                     else if (online)
                     {
-                        var errors = await _orderProcessingService.PartiallyRefundAsync(order, amountToRefund);
-                        if (errors.Count == 0)
-                        {
-                            success = true;
-                        }
-                        else
-                        {
-                            errors.Each(x => NotifyError(x, false));
-                        }
+                        await _orderProcessingService.PartiallyRefundAsync(order, amountToRefund);
+                        success = true;
                     }
                     else
                     {
@@ -1045,24 +1044,25 @@ namespace Smartstore.Admin.Controllers
             return RedirectToAction(nameof(Edit), new { id = orderId });
         }
 
-        [HttpPost, ActionName("Edit")]
-        [FormValueRequired(FormValueRequirementOperator.StartsWith, "btnAddReturnRequest")]
         [Permission(Permissions.Order.ReturnRequest.Create)]
-        public async Task<IActionResult> AddReturnRequest(int id, IFormCollection form)
+        public async Task<IActionResult> AddReturnRequest(int orderId, int orderItemId)
         {
             var order = await _db.Orders
                 .AsSplitQuery()
                 .Include(x => x.OrderItems)
                 .Include(x => x.Customer)
                 .ThenInclude(x => x.ReturnRequests)
-                .FindByIdAsync(id);
+                .FindByIdAsync(orderId);
 
             if (order == null)
             {
                 return NotFound();
             }
 
-            var orderItem = GetOrderItemByFormValue(order, "btnAddReturnRequest", form);
+            var orderItem = order.OrderItems
+                .Where(x => x.Id == orderItemId)
+                .FirstOrDefault();
+
             if (orderItem == null)
             {
                 return NotFound();
@@ -1091,21 +1091,22 @@ namespace Smartstore.Admin.Controllers
             return RedirectToAction(nameof(Edit), new { id = order.Id });
         }
 
-        [HttpPost, ActionName("Edit")]
-        [FormValueRequired(FormValueRequirementOperator.StartsWith, "btnResetDownloadCount")]
         [Permission(Permissions.Order.Update)]
-        public async Task<IActionResult> ResetDownloadCount(int id, IFormCollection form)
+        public async Task<IActionResult> ResetDownloadCount(int orderId, int orderItemId)
         {
             var order = await _db.Orders
                 .Include(x => x.OrderItems)
-                .FindByIdAsync(id);
+                .FindByIdAsync(orderId);
 
             if (order == null)
             {
                 return NotFound();
             }
 
-            var orderItem = GetOrderItemByFormValue(order, "btnResetDownloadCount", form);
+            var orderItem = order.OrderItems
+                .Where(x => x.Id == orderItemId)
+                .FirstOrDefault();
+
             if (orderItem == null)
             {
                 return NotFound();
@@ -1119,21 +1120,22 @@ namespace Smartstore.Admin.Controllers
             return RedirectToAction(nameof(Edit), new { id = order.Id });
         }
 
-        [HttpPost, ActionName("Edit")]
-        [FormValueRequired(FormValueRequirementOperator.StartsWith, "btnPvActivateDownload")]
         [Permission(Permissions.Order.Update)]
-        public async Task<IActionResult> ActivateDownloadOrderItem(int id, IFormCollection form)
+        public async Task<IActionResult> ActivateDownloadOrderItem(int orderId, int orderItemId)
         {
             var order = await _db.Orders
                 .Include(x => x.OrderItems)
-                .FindByIdAsync(id);
+                .FindByIdAsync(orderId);
 
             if (order == null)
             {
                 return NotFound();
             }
 
-            var orderItem = GetOrderItemByFormValue(order, "btnPvActivateDownload", form);
+            var orderItem = order.OrderItems
+                .Where(x => x.Id == orderItemId)
+                .FirstOrDefault();
+
             if (orderItem == null)
             {
                 return NotFound();
@@ -1405,7 +1407,9 @@ namespace Smartstore.Admin.Controllers
         [Permission(Permissions.Order.Update)]
         public async Task<IActionResult> OrderNoteInsert(int orderId, bool displayToCustomer, string message)
         {
-            var order = await _db.Orders.FindByIdAsync(orderId);
+            var order = await _db.Orders
+                .Include(x => x.Customer)
+                .FindByIdAsync(orderId);
             if (order == null)
             {
                 return NotFound();
@@ -1541,7 +1545,9 @@ namespace Smartstore.Admin.Controllers
                 return View(model);
             }
 
-            var attributeDescription = await _productAttributeFormatter.Value.FormatAttributesAsync(selection, product, order.Customer);
+            await _productAttributeMaterializer.MergeWithCombinationAsync(product, selection);
+
+            var attributeDescription = await _productAttributeFormatter.Value.FormatAttributesAsync(selection, product, ProductAttributeFormatOptions.Default, order.Customer);
             var productCost = await _priceCalculationService.Value.CalculateProductCostAsync(product, selection);
 
             var displayDeliveryTime =
@@ -1555,6 +1561,7 @@ namespace Smartstore.Admin.Controllers
                 OrderItemGuid = Guid.NewGuid(),
                 Order = order,
                 ProductId = product.Id,
+                Sku = product.Sku,
                 UnitPriceInclTax = model.UnitPriceInclTax,
                 UnitPriceExclTax = model.UnitPriceExclTax,
                 PriceInclTax = model.PriceInclTax,
@@ -1771,8 +1778,8 @@ namespace Smartstore.Admin.Controllers
 
         private async Task PrepareOrderModel(OrderModel model, Order order)
         {
-            Guard.NotNull(model, nameof(model));
-            Guard.NotNull(order, nameof(order));
+            Guard.NotNull(model);
+            Guard.NotNull(order);
 
             var language = Services.WorkContext.WorkingLanguage;
             var store = Services.StoreContext.GetStoreById(order.StoreId);
@@ -1893,7 +1900,7 @@ namespace Smartstore.Admin.Controllers
                 model.DirectDebitIban = _encryptor.DecryptText(order.DirectDebitIban);
             }
 
-            var pm = await _paymentService.LoadPaymentMethodBySystemNameAsync(order.PaymentMethodSystemName);
+            var pm = await _paymentService.LoadPaymentProviderBySystemNameAsync(order.PaymentMethodSystemName);
             if (pm != null)
             {
                 model.DisplayCompletePaymentNote = order.PaymentStatus == PaymentStatus.Pending && await pm.Value.CanRePostProcessPaymentAsync(order);
@@ -2108,7 +2115,7 @@ namespace Smartstore.Admin.Controllers
 
                 var model = MiniMapper.Map<OrderItem, OrderModel.OrderItemModel>(item);
                 model.ProductName = product.GetLocalized(x => x.Name);
-                model.Sku = product.Sku;
+                model.Sku = item.Sku.NullEmpty() ?? product.Sku;
                 model.ProductType = product.ProductType;
                 model.ProductTypeName = product.GetProductTypeLabel(Services.Localization);
                 model.ProductTypeLabelHint = product.ProductTypeLabelHint;
@@ -2173,23 +2180,6 @@ namespace Smartstore.Admin.Controllers
             }
 
             return result;
-        }
-
-        private OrderItem GetOrderItemByFormValue(Order order, string prefix, IFormCollection form)
-        {
-            var prefixLength = prefix.Length;
-
-            foreach (var value in form.Keys)
-            {
-                if (value.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase))
-                {
-                    var orderItemId = value[prefixLength..].ToInt();
-
-                    return order.OrderItems.FirstOrDefault(x => x.Id == orderItemId);
-                }
-            }
-
-            return null;
         }
 
         private string Format(decimal value, bool priceIncludesTax, bool? displayTaxSuffix = null, PricingTarget target = PricingTarget.Product)

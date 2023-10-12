@@ -1,44 +1,56 @@
-﻿namespace Smartstore.Core.Search
+﻿#nullable enable
+
+namespace Smartstore.Core.Search
 {
     public class CombinedSearchFilter : SearchFilterBase, ICombinedSearchFilter
     {
-        private readonly IList<ISearchFilter> _filters;
-
         public CombinedSearchFilter()
+            : this((string?)null)
         {
-            _filters = new List<ISearchFilter>();
+        }
+
+        public CombinedSearchFilter(string? name)
+        {
+            FieldName = name;
+            Filters = new List<ISearchFilter>();
         }
 
         public CombinedSearchFilter(IEnumerable<ISearchFilter> filters)
+            : this(null, filters)
         {
-            Guard.NotNull(filters, nameof(filters));
-
-            _filters = new List<ISearchFilter>(filters);
         }
 
-        public ICollection<ISearchFilter> Filters => _filters;
+        public CombinedSearchFilter(string? name, IEnumerable<ISearchFilter> filters)
+        {
+            Guard.NotNull(filters);
 
-        #region Fluent builder
+            FieldName = name;
+            Filters = new List<ISearchFilter>(filters);
+        }
+
+        public ICollection<ISearchFilter> Filters { get; }
 
         public CombinedSearchFilter Add(ISearchFilter filter)
         {
-            Guard.NotNull(filter, nameof(filter));
+            Guard.NotNull(filter);
 
-            _filters.Add(filter);
+            Filters.Add(filter);
 
             return this;
         }
 
-        #endregion
-
         public override string ToString()
         {
-            if (_filters.Any())
+            if (Filters.Count > 0)
             {
-                return string.Concat("(", string.Join(", ", _filters.Select(x => x.ToString())), ")");
+                return string.Concat(
+                    FieldName.RightPad(),
+                    "(",
+                    string.Join(", ", Filters.Select(x => x.ToString())), 
+                    ")");
             }
 
-            return "";
+            return string.Empty;
         }
     }
 }

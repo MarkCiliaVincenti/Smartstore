@@ -43,19 +43,16 @@ namespace Smartstore.PayPal.Components
                 try
                 {
                     var birthDate = DateTime.Parse((string)paymentData.Get("PayPalInvoiceBirthdate"));
-
-                    model.DateOfBirthDay = birthDate.Day;
-                    model.DateOfBirthMonth = birthDate.Month;
-                    model.DateOfBirthYear = birthDate.Year;
+                    model.DateOfBirth = birthDate;
                 }
-                catch { }
+                catch 
+                { 
+                }
             }
             else if (customer.BirthDate != null)
             {
-                // Prepare model if customer is logged in and has already entered his data of birth
-                model.DateOfBirthDay = customer.BirthDate.Value.Day;
-                model.DateOfBirthMonth = customer.BirthDate.Value.Month;
-                model.DateOfBirthYear = customer.BirthDate.Value.Year;
+                // Prepare model if customer is logged in and has already entered his data of birth.
+                model.DateOfBirth = (DateTime)customer.BirthDate;
             }
 
             return View(model);

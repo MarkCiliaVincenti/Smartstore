@@ -26,6 +26,15 @@ namespace Smartstore.Core.Catalog.Attributes
                 .WithMany()
                 .HasForeignKey(c => c.QuantityUnitId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // INFO: by default, EF always read and write to the backing field (not the property) but _hashCode is empty on instantiation.
+            // The caller would have to initialize HashCode itself (by entity.HashCode = entity.GetAttributesHashCode()), but we do not want that.
+            // PreferFieldDuringConstruction causes EF to write to _hashCode only when materializing and to use the HashCode property in all other cases.
+            // See https://learn.microsoft.com/en-us/ef/core/modeling/backing-field?tabs=data-annotations#field-and-property-access
+            builder
+                .Property(c => c.HashCode)
+                .HasField("_hashCode")
+                .UsePropertyAccessMode(PropertyAccessMode.PreferFieldDuringConstruction);
         }
     }
 
@@ -36,10 +45,12 @@ namespace Smartstore.Core.Catalog.Attributes
     [Index(nameof(Gtin), Name = "IX_Gtin")]
     [Index(nameof(ManufacturerPartNumber), Name = "IX_ManufacturerPartNumber")]
     [Index(nameof(StockQuantity), nameof(AllowOutOfStockOrders), Name = "IX_StockQuantity_AllowOutOfStockOrders")]
+    [Index(nameof(HashCode), Name = "IX_HashCode")]
     public partial class ProductVariantAttributeCombination : BaseEntity, IAttributeAware
     {
         private ProductVariantAttributeSelection _attributeSelection;
         private string _rawAttributes;
+        private int? _hashCode;
 
         /// <summary>
         /// Gets or sets the product identifier.
@@ -159,10 +170,11 @@ namespace Smartstore.Core.Catalog.Attributes
             {
                 _rawAttributes = value;
                 _attributeSelection = null;
+                _hashCode = null;
             }
         }
 
-        [NotMapped]
+        [NotMapped, IgnoreDataMember]
         public ProductVariantAttributeSelection AttributeSelection
             => _attributeSelection ??= new(RawAttributes);
 
@@ -175,6 +187,29 @@ namespace Smartstore.Core.Catalog.Attributes
         /// Gets or sets a value indicating whether to allow orders when out of stock.
         /// </summary>
         public bool AllowOutOfStockOrders { get; set; }
+
+        /// <summary>
+        /// Gets or sets the attributes hash code.
+        /// </summary>
+        /// <remarks>
+        /// Use <see cref="GetAttributesHashCode"/> if you want to regenerate hash code.
+        /// Or use <see cref="AttributeSelection.GetHashCode"/> if you want to skip the backing field.
+        /// Do not use or set <see cref="BaseEntity.GetHashCode"/> for this purpose because it creates a hash code for the whole entity which differs!
+        /// </remarks>
+        [Required]
+        public int HashCode
+        {
+            get => GetAttributesHashCode();
+            // Setter for EF.
+            set => _hashCode = value;
+        }
+
+        /// <summary>
+        /// Gets the attributes hash code.
+        /// </summary>
+        /// <remarks>Uses <see cref="AttributeSelection.GetHashCode"/>, so the returned value differs from that of <see cref="BaseEntity.GetHashCode"/>.</remarks>        
+        public int GetAttributesHashCode()
+            => _hashCode ??= AttributeSelection.GetHashCode();
 
         /// <summary>
         /// Gets the assigned media file identifiers.
@@ -201,7 +236,7 @@ namespace Smartstore.Core.Catalog.Attributes
         public void SetAssignedMediaIds(int[] ids)
         {
             AssignedMediaFileIds = ids?.Length > 0
-                ? string.Join(",", ids)
+                ? string.Join(',', ids)
                 : null;
         }
     }

@@ -62,8 +62,8 @@ namespace Smartstore.Web.Rendering
             string htmlFieldName,
             object additionalViewData)
         {
-            Guard.NotNull(helper, nameof(helper));
-            Guard.NotNull(expression, nameof(expression));
+            Guard.NotNull(helper);
+            Guard.NotNull(expression);
 
             if (helper is HtmlHelper htmlHelper)
             {
@@ -249,8 +249,8 @@ namespace Smartstore.Web.Rendering
             object htmlAttributes,
             string tag)
         {
-            Guard.NotNull(helper, nameof(helper));
-            Guard.NotNull(expression, nameof(expression));
+            Guard.NotNull(helper);
+            Guard.NotNull(expression);
 
             var htmlGenerator = helper.ViewContext.HttpContext.RequestServices.GetRequiredService<IHtmlGenerator>();
             return htmlGenerator.GenerateValidationMessage(
@@ -269,38 +269,52 @@ namespace Smartstore.Web.Rendering
         public static IHtmlContent ColorBoxFor(
             this IHtmlHelper helper,
             ModelExpression expression,
-            string defaultColor = null)
+            string defaultColor = null,
+            bool swatches = true)
         {
-            Guard.NotNull(expression, nameof(expression));
+            Guard.NotNull(expression);
 
-            return ColorBox(helper, expression.Name, expression.Model?.ToString().EmptyNull(), defaultColor);
+            return ColorBox(
+                helper, 
+                expression.Name, 
+                expression.Model?.ToString().EmptyNull(), 
+                defaultColor, 
+                swatches);
         }
 
         public static IHtmlContent ColorBoxFor<TModel>(
             this IHtmlHelper<TModel> helper,
             Expression<Func<TModel, string>> expression,
-            string defaultColor = null)
+            string defaultColor = null,
+            bool swatches = true)
         {
-            Guard.NotNull(expression, nameof(expression));
+            Guard.NotNull(expression);
 
-            return ColorBox(helper, helper.NameFor(expression), helper.ValueFor(expression), defaultColor);
+            return ColorBox(
+                helper, 
+                helper.NameFor(expression), 
+                helper.ValueFor(expression), 
+                defaultColor, 
+                swatches);
         }
 
         public static IHtmlContent ColorBox(
             this IHtmlHelper helper,
             string name,
             string color,
-            string defaultColor = null)
+            string defaultColor = null,
+            bool swatches = true)
         {
             defaultColor = defaultColor.EmptyNull();
             var isDefault = color.EqualsNoCase(defaultColor);
 
             var builder = new SmartHtmlContentBuilder();
 
-            builder.AppendHtml("<div class='input-group colorpicker-component sm-colorbox edit-control' data-fallback-color='{0}' data-editor='color'>".FormatInvariant(defaultColor));
+            builder.AppendHtml(
+                $"<div class='input-group colorpicker-component edit-control' data-swatches='{swatches.ToString().ToLower()}' data-fallback-color='{defaultColor}' data-editor='color'>");
 
-            builder.AppendHtml(helper.TextBox(name, isDefault ? string.Empty : color, new { @class = "form-control colorval", placeholder = defaultColor }));
-            builder.AppendFormat("<div class='input-group-append input-group-addon'><div class='input-group-text'><i class='thecolor' style='{0}'>&nbsp;</i></div></div>", defaultColor.HasValue() ? "background-color: " + defaultColor : string.Empty);
+            builder.AppendHtml(helper.TextBox(name, isDefault ? string.Empty : color, new { @class = "form-control", placeholder = defaultColor }));
+            builder.AppendFormat("<div class='input-group-append'><button type='button' class='input-group-text colorpicker-input-addon btn btn-light'><i class='thecolor' style='{0}'>&nbsp;</i></button></div>", defaultColor.HasValue() ? "background-color: " + defaultColor : string.Empty);
 
             builder.AppendHtml("</div>");
 
@@ -323,7 +337,7 @@ namespace Smartstore.Web.Rendering
             bool displayHint,
             object htmlAttributes = null)
         {
-            Guard.NotNull(expression, nameof(expression));
+            Guard.NotNull(expression);
 
             var modelExpression = helper.ModelExpressionFor(expression);
             var metadata = modelExpression.Metadata;
@@ -364,7 +378,7 @@ namespace Smartstore.Web.Rendering
         /// </summary>
         public static IHtmlContent HintTooltipFor<TModel, TResult>(this IHtmlHelper<TModel> helper, Expression<Func<TModel, TResult>> expression)
         {
-            Guard.NotNull(expression, nameof(expression));
+            Guard.NotNull(expression);
 
             var modelExpression = helper.ModelExpressionFor(expression);
             var hintText = modelExpression?.Metadata?.Description;
@@ -406,7 +420,7 @@ namespace Smartstore.Web.Rendering
         /// </summary>
         public static IHtmlContent HintFor<TModel, TResult>(this IHtmlHelper<TModel> helper, Expression<Func<TModel, TResult>> expression)
         {
-            Guard.NotNull(expression, nameof(expression));
+            Guard.NotNull(expression);
 
             var modelExpression = helper.ModelExpressionFor(expression);
             var hintText = modelExpression?.Metadata?.Description;
@@ -441,8 +455,8 @@ namespace Smartstore.Web.Rendering
 
         public static IEnumerable<SelectListItem> GetLocalizedEnumSelectList(this IHtmlHelper helper, Type enumType)
         {
-            Guard.NotNull(helper, nameof(helper));
-            Guard.IsEnumType(enumType, nameof(enumType));
+            Guard.NotNull(helper);
+            Guard.IsEnumType(enumType);
 
             var requestServices = helper.ViewContext.HttpContext.RequestServices;
             var metadataProvider = requestServices.GetService<IModelMetadataProvider>();
@@ -513,11 +527,22 @@ namespace Smartstore.Web.Rendering
             if (locales.Count > 1)
             {
                 var services = helper.ViewContext.HttpContext.RequestServices;
-                var db = services.GetRequiredService<SmartDbContext>();
                 var languageService = services.GetRequiredService<ILanguageService>();
                 var localizationService = services.GetRequiredService<ILocalizationService>();
                 var tabs = new List<TabItem>(locales.Count + 1);
                 var languages = new List<Language>(locales.Count + 1);
+                var allLanguages = languageService.GetAllLanguages(true).ToDictionary(x => x.Id);
+
+                var num = locales.Count;
+                var size = num <= 3
+                    ? "xs"
+                    : (num <= 5
+                        ? "sm"
+                        : (num <= 8
+                            ? "md"
+                            : (num <= 16
+                                ? "lg"
+                                : "xl")));
 
                 // Create the parent tabstrip
                 var strip = new TabStripTagHelper
@@ -531,32 +556,43 @@ namespace Smartstore.Web.Rendering
 
                 if (hasMasterTemplate)
                 {
-                    var masterLanguage = db.Languages.FindById(languageService.GetMasterLanguageId(), false);
+                    var masterLanguage = allLanguages.Get(languageService.GetMasterLanguageId());
                     languages.Add(masterLanguage);
 
                     // Add the first default tab for the master template
-                    tabs.Add(new TabItem
+                    var tabItem = new TabItem
                     {
                         Selected = true,
                         Text = localizationService.GetResource("Admin.Common.Standard"),
-                        Content = masterTemplate(helper.ViewData.Model).ToHtmlString()
-                    });
+                        Content = masterTemplate(helper.ViewData.Model).ToHtmlString(),
+                        Icon = "fa fa-globe"
+                    };
+
+                    tabItem.HtmlAttributes.Merge("class", "nav-item-master");
+                    tabItem.LinkHtmlAttributes.Merge("class", "btn btn-light btn-sm");
+
+                    tabs.Add(tabItem);
                 }
 
                 // Add all language specific tabs
                 for (var i = 0; i < locales.Count; i++)
                 {
                     var locale = locales[i];
-                    var language = db.Languages.FindById(locale.LanguageId, false);
+                    var language = allLanguages.Get(locale.LanguageId);
                     languages.Add(language);
 
-                    tabs.Add(new TabItem
+                    var tabItem = new TabItem
                     {
                         Selected = !hasMasterTemplate && i == 0,
-                        Text = language.Name,
+                        Text = language.GetLocalized(x => x.Name),
                         ImageUrl = "~/images/flags/" + language.FlagImageFileName,
                         Content = localizedTemplate(i).ToHtmlString()
-                    });
+                    };
+
+                    tabItem.HtmlAttributes.Merge("class", "nav-item-locale");
+                    tabItem.LinkHtmlAttributes.Merge("class", "btn btn-light btn-sm");
+
+                    tabs.Add(tabItem);
                 }
 
                 // Create TagHelperContext for tabstrip.
@@ -584,7 +620,7 @@ namespace Smartstore.Web.Rendering
                         {
                             builder.Item = tabs[i];
                             builder
-                                .HtmlAttributes("title", language.Name, !isMaster)
+                                .HtmlAttributes("title", language.GetLocalized(x => x.Name), !isMaster)
                                 .ContentHtmlAttributes(new
                                 {
                                     @class = "locale-editor-content",
@@ -603,6 +639,7 @@ namespace Smartstore.Web.Rendering
 
                 var wrapper = new TagBuilder("div");
                 wrapper.Attributes.Add("class", "locale-editor");
+                wrapper.Attributes.Add("style", $"--tab-caption-display-{size}: inline");
 
                 return stripOutput.WrapElementWith(wrapper);
             }
@@ -627,7 +664,7 @@ namespace Smartstore.Web.Rendering
         /// </param>
         public static IHtmlContent Icon(this IHtmlHelper helper, string name, object htmlAttributes = null)
         {
-            Guard.NotNull(name, nameof(name));
+            Guard.NotNull(name);
 
             if (name.StartsWith("bi:"))
             {
@@ -678,7 +715,7 @@ namespace Smartstore.Web.Rendering
             string transforms = null,
             object htmlAttributes = null)
         {
-            Guard.NotNull(name, nameof(name));
+            Guard.NotNull(name);
 
             var svg = new TagBuilder("svg");
 
@@ -764,7 +801,7 @@ namespace Smartstore.Web.Rendering
         /// <returns>The HTML produced by all widgets registered for the given given zone.</returns>
         public static async Task<IHtmlContent> RenderZoneAsync(this IHtmlHelper helper, string zoneName, object model = null)
         {
-            Guard.NotEmpty(zoneName, nameof(zoneName));
+            Guard.NotEmpty(zoneName);
 
             var viewContext = helper.ViewContext;
             var widgetSelector = viewContext.HttpContext.RequestServices.GetRequiredService<IWidgetSelector>();
@@ -799,7 +836,7 @@ namespace Smartstore.Web.Rendering
             }
 
             var builder = new SmartHtmlContentBuilder();
-            builder.AppendHtml($"<span class='badge badge-{typeLabelHint} mr-1'>{typeName}</span>{namePart}");
+            builder.AppendHtml($"<span class='badge badge-subtle badge-ring badge-{typeLabelHint} mr-1'>{typeName}</span>{namePart}");
             return builder;
         }
 

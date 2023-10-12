@@ -23,7 +23,7 @@ namespace Smartstore.PayPal.Filters
 
         public async Task OnResultExecutionAsync(ResultExecutingContext context, ResultExecutionDelegate next)
         {
-            if (!await _payPalHelper.IsPayPalStandardActiveAsync())
+            if (!await _payPalHelper.IsProviderActiveAsync(PayPalConstants.Standard))
             {
                 await next();
                 return;
@@ -31,7 +31,7 @@ namespace Smartstore.PayPal.Filters
 
             if (_settings.DisplayProductDetailPayLaterWidget && context.Result.IsHtmlViewResult())
             {
-                _widgetProvider.RegisterViewComponent<PayPalPayLaterViewComponent>("productdetail_action_links_after");
+                _widgetProvider.RegisterViewComponent<PayPalPayLaterMessageViewComponent>("productdetail_action_links_after");
             }
 
             await next();

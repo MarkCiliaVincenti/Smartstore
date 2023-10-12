@@ -1,10 +1,16 @@
 ﻿#nullable enable
 
+using Smartstore.Http;
+
 namespace Smartstore.Core.Checkout.Payment
 {
     /// <summary>
     /// Represents an error that occurs during payment processing.
     /// </summary>
+    /// <remarks>
+    /// It is recommended to output a user-friendly message and to put all technical details 
+    /// such as payment request and response data into an inner exception for logging.
+    /// </remarks>
     public class PaymentException : Exception
     {
         /// <summary>
@@ -76,5 +82,11 @@ namespace Smartstore.Core.Checkout.Payment
         /// HTTP payment response (optional).
         /// </summary>
         public virtual PaymentResponse? Response { get; init; }
+
+        /// <summary>
+        /// Gets or sets route values for redirecting.
+        /// If <c>null</c>, the buyer is redirected back to the payment method list in checkout.
+        /// </summary>
+        public RouteInfo? RedirectRoute { get; init; }
     }
 }

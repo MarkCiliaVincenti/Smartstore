@@ -5,7 +5,6 @@ using Smartstore.Core.Checkout.Tax;
 using Smartstore.Core.Common.Services;
 using Smartstore.Core.Localization;
 using Smartstore.Core.Messaging;
-using Smartstore.Core.Security;
 using Smartstore.Core.Seo;
 using Smartstore.Core.Seo.Routing;
 using Smartstore.Web.Models.Orders;
@@ -40,7 +39,7 @@ namespace Smartstore.Web.Controllers
             _localizationSettings = localizationSettings;
         }
 
-        [RequireSsl, DisallowRobot]
+        [DisallowRobot]
         public async Task<IActionResult> ReturnRequest(int id /* orderId */)
         {
             var order = await _db.Orders
@@ -48,9 +47,14 @@ namespace Smartstore.Web.Controllers
                 .ThenInclude(x => x.Product)
                 .FindByIdAsync(id);
 
-            if (order == null || Services.WorkContext.CurrentCustomer.Id != order.CustomerId)
+            if (order == null)
             {
-                return new UnauthorizedResult();
+                return NotFound();
+            }
+
+            if (Services.WorkContext.CurrentCustomer.Id != order.CustomerId)
+            {
+                return ChallengeOrForbid();
             }
 
             if (!_orderProcessingService.IsReturnRequestAllowed(order))
@@ -59,7 +63,8 @@ namespace Smartstore.Web.Controllers
             }
 
             var model = new SubmitReturnRequestModel();
-            model = await PrepareReturnRequestModelAsync(model, order);
+            await PrepareReturnRequestModelAsync(model, order);
+
             return View(model);
         }
 
@@ -69,9 +74,14 @@ namespace Smartstore.Web.Controllers
             var order = await _db.Orders.FindByIdAsync(id);
             var customer = Services.WorkContext.CurrentCustomer;
 
-            if (order == null || customer.Id != order.CustomerId)
+            if (order == null)
             {
-                return new UnauthorizedResult();
+                return NotFound();
+            }
+
+            if (customer.Id != order.CustomerId)
+            {
+                return ChallengeOrForbid();
             }
 
             if (!_orderProcessingService.IsReturnRequestAllowed(order))
@@ -120,7 +130,7 @@ namespace Smartstore.Web.Controllers
                 }
             }
 
-            model = await PrepareReturnRequestModelAsync(model, order);
+            await PrepareReturnRequestModelAsync(model, order);
 
             if (model.AddedReturnRequestIds.Any())
             {
@@ -134,32 +144,17 @@ namespace Smartstore.Web.Controllers
             return View(model);
         }
 
-        protected async Task<SubmitReturnRequestModel> PrepareReturnRequestModelAsync(SubmitReturnRequestModel model, Order order)
+        protected async Task PrepareReturnRequestModelAsync(SubmitReturnRequestModel model, Order order)
         {
-            Guard.NotNull(order, nameof(order));
-            Guard.NotNull(model, nameof(model));
+            Guard.NotNull(order);
+            Guard.NotNull(model);
 
             model.OrderId = order.Id;
 
-            var language = Services.WorkContext.WorkingLanguage;
-            string returnRequestReasons = _orderSettings.GetLocalizedSetting(x => x.ReturnRequestReasons, order.CustomerLanguageId, order.StoreId, true, false);
-            string returnRequestActions = _orderSettings.GetLocalizedSetting(x => x.ReturnRequestActions, order.CustomerLanguageId, order.StoreId, true, false);
-
-            // Return reasons.
-            var availableReturnReasons = new List<SelectListItem>();
-            foreach (var rrr in returnRequestReasons.SplitSafe(','))
-            {
-                availableReturnReasons.Add(new SelectListItem { Text = rrr, Value = rrr });
-            }
-            ViewBag.AvailableReturnReasons = availableReturnReasons;
-
-            // Return actions.
-            var availableReturnActions = new List<SelectListItem>();
-            foreach (var rra in returnRequestActions.SplitSafe(','))
-            {
-                availableReturnActions.Add(new SelectListItem { Text = rra, Value = rra });
-            }
-            ViewBag.AvailableReturnActions = availableReturnActions;
+            var customerCurrency = await _db.Currencies
+                .AsNoTracking()
+                .Where(x => x.CurrencyCode == order.CustomerCurrencyCode)
+                .FirstOrDefaultAsync() ?? new() { CurrencyCode = order.CustomerCurrencyCode };
 
             foreach (var orderItem in order.OrderItems)
             {
@@ -175,32 +170,32 @@ namespace Smartstore.Web.Controllers
 
                 orderItemModel.ProductUrl = await _productUrlHelper.GetProductUrlAsync(orderItemModel.ProductSeName, orderItem);
 
-                var customerCurrency = await _db.Currencies
-                    .AsNoTracking()
-                    .Where(x => x.CurrencyCode == order.CustomerCurrencyCode)
-                    .FirstOrDefaultAsync() ?? new Currency { CurrencyCode = order.CustomerCurrencyCode };
-
-                // Unit price.
                 switch (order.CustomerTaxDisplayType)
                 {
                     case TaxDisplayType.ExcludingTax:
-                    {
-                        var unitPriceExclTaxInCustomerCurrency = _currencyService.ConvertToExchangeRate(orderItem.UnitPriceExclTax, order.CurrencyRate, customerCurrency, true);
-                        orderItemModel.UnitPrice = new Money(orderItem.UnitPriceExclTax, customerCurrency);
-                    }
-                    break;
+                        orderItemModel.UnitPrice = _currencyService.ConvertToExchangeRate(orderItem.UnitPriceExclTax, order.CurrencyRate, customerCurrency, true);
+                        break;
+
                     case TaxDisplayType.IncludingTax:
-                    {
-                        var unitPriceInclTaxInCustomerCurrency = _currencyService.ConvertToExchangeRate(orderItem.UnitPriceInclTax, order.CurrencyRate, customerCurrency, true);
-                        orderItemModel.UnitPrice = new Money(orderItem.UnitPriceInclTax, customerCurrency);
-                    }
-                    break;
+                        orderItemModel.UnitPrice = _currencyService.ConvertToExchangeRate(orderItem.UnitPriceInclTax, order.CurrencyRate, customerCurrency, true);
+                        break;
                 }
 
                 model.Items.Add(orderItemModel);
             }
 
-            return model;
+            string returnRequestReasons = _orderSettings.GetLocalizedSetting(x => x.ReturnRequestReasons, order.CustomerLanguageId, order.StoreId, true, false);
+            string returnRequestActions = _orderSettings.GetLocalizedSetting(x => x.ReturnRequestActions, order.CustomerLanguageId, order.StoreId, true, false);
+
+            ViewBag.AvailableReturnReasons = returnRequestReasons
+                .SplitSafe(',')
+                .Select(x => new SelectListItem { Text = x, Value = x })
+                .ToList();
+
+            ViewBag.AvailableReturnActions = returnRequestActions
+                .SplitSafe(',')
+                .Select(x => new SelectListItem { Text = x, Value = x })
+                .ToList();
         }
     }
 }

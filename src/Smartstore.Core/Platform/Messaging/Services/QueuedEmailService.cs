@@ -163,7 +163,6 @@ namespace Smartstore.Core.Messaging
             target.AddRange(addresses
                 .TrimSafe()
                 .SplitSafe(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(x => x.HasValue())
                 .Select(x => new MailAddress(x)));
 
             return target;
@@ -174,8 +173,6 @@ namespace Smartstore.Core.Messaging
         /// </summary>
         internal MailMessage ConvertMail(QueuedEmail qe)
         {
-            // 'internal' for testing purposes
-
             var msg = new MailMessage(
                 qe.To,
                 qe.Subject.Replace(Environment.NewLine, string.Empty),
@@ -184,7 +181,7 @@ namespace Smartstore.Core.Messaging
 
             if (qe.ReplyTo.HasValue())
             {
-                msg.ReplyTo.Add(new MailAddress(qe.ReplyTo));
+                AddMailAddresses(qe.ReplyTo, msg.ReplyTo);
             }
 
             AddMailAddresses(qe.CC, msg.Cc);

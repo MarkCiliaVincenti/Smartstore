@@ -88,7 +88,7 @@ namespace Smartstore.Web.Infrastructure
             var customer = _services.WorkContext.CurrentCustomer;
             var urlHelper = _urlHelper.Value;
 
-            var root = new TreeNode<MenuItem>(new MenuItem { Text = T("Account.Navigation") })
+            var root = new TreeNode<MenuItem>(new MenuItem ())
             {
                 Id = Name
             };
@@ -115,7 +115,7 @@ namespace Smartstore.Web.Infrastructure
                 {
                     Id = "orders",
                     Text = T("Account.CustomerOrders"),
-                    Icon = "fal fa-file-invoice",
+                    Icon = "fal fa-file-lines",
                     ActionName = "Orders",
                     ControllerName = "Customer"
                 }
@@ -177,7 +177,7 @@ namespace Smartstore.Web.Infrastructure
             {
                 Id = "changepassword",
                 Text = T("Account.ChangePassword"),
-                Icon = "fal fa-unlock-alt",
+                Icon = "fal fa-unlock-keyhole",
                 ActionName = "ChangePassword",
                 ControllerName = "Identity"
             });

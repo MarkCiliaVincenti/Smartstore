@@ -347,8 +347,8 @@ namespace Smartstore.Core.Messaging
 
         protected virtual async Task<object> CreateModelPartAsync(OrderNote part, MessageContext messageContext)
         {
-            Guard.NotNull(messageContext, nameof(messageContext));
-            Guard.NotNull(part, nameof(part));
+            Guard.NotNull(messageContext);
+            Guard.NotNull(part);
 
             var m = new Dictionary<string, object>
             {
@@ -411,16 +411,16 @@ namespace Smartstore.Core.Messaging
             {
                 // Try to get URL from tracker.
                 var srcm = _services.Resolve<IShippingService>()
-                    .LoadActiveShippingRateComputationMethods(systemName: part.Order.ShippingRateComputationMethodSystemName)
+                    .LoadEnabledShippingProviders(systemName: part.Order.ShippingRateComputationMethodSystemName)
                     .FirstOrDefault();
 
-                if (srcm != null && srcm.Value.IsActive)
+                if (srcm != null)
                 {
                     var tracker = srcm.Value.ShipmentTracker;
                     if (tracker != null)
                     {
                         var shippingSettings = await _services.SettingFactory.LoadSettingsAsync<ShippingSettings>(part.Order.StoreId);
-                        if (srcm.IsShippingRateComputationMethodActive(shippingSettings))
+                        if (srcm.IsShippingProviderEnabled(shippingSettings))
                         {
                             trackingUrl = tracker.GetUrl(part.TrackingNumber);
                         }

@@ -21,7 +21,6 @@
     });
 }
 
-
 <partial name="MetaProperties" model="Model.MetaProperties" />
 
 <div class="page product-details-page" itemscope itemtype="http://schema.org/Product">
@@ -47,7 +46,10 @@
                     </div>
 
                     <!-- Sidebar: Info, Price, Buttons etc. -->
-                    <aside class="col-12 col-md-6 col-lg-5 pd-info-col zoom-window-container">
+                    <aside class="col-12 col-md-6 col-lg-5 pd-info-col">
+                        @* INFO: Don't add any line breaks here, because otherwise the empty selector in the zoom-window-container div won't work. *@
+                        <div class="zoom-window-container"></div>
+
                         <zone name="productdetails_info_top" />
 
                         <partial name="Product.Info" model="Model" />
@@ -72,6 +74,9 @@
                         {
                             <partial name="Product.Offer.Actions.Misc" model="Model" />
                         }
+
+                        <!-- Available payment methods -->
+                        <partial name="Product.AvailablePaymentMethods" />
 
                         <!-- social share -->
                         <div sm-if="Model.ProductShareCode.HasValue()" class="pd-share d-flex justify-content-@(Model.ProductType == ProductType.GroupedProduct ? "start mt-4" : "center mt-3")">

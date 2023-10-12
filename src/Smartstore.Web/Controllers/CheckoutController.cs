@@ -8,6 +8,7 @@ using Smartstore.Core.Checkout.Shipping;
 using Smartstore.Core.Localization.Routing;
 using Smartstore.Core.Seo.Routing;
 using Smartstore.Engine.Modularity;
+using Smartstore.Http;
 using Smartstore.Utilities.Html;
 using Smartstore.Web.Models.Cart;
 using Smartstore.Web.Models.Checkout;
@@ -103,9 +104,9 @@ namespace Smartstore.Web.Controllers
                 return RedirectToRoute("ShoppingCart");
             }
 
-            if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
+            if (!customer.IsRegistered() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             customer.ResetCheckoutData(storeId);
@@ -172,7 +173,7 @@ namespace Smartstore.Web.Controllers
 
             if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var model = await PrepareCheckoutAddressModelAsync(false);
@@ -235,7 +236,7 @@ namespace Smartstore.Web.Controllers
 
             if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             if (ModelState.IsValid)
@@ -282,7 +283,7 @@ namespace Smartstore.Web.Controllers
 
             if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             if (!cart.IncludesMatchingItems(x => x.IsShippingEnabled))
@@ -327,7 +328,7 @@ namespace Smartstore.Web.Controllers
 
             if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             if (!cart.IsShippingRequired())
@@ -379,7 +380,7 @@ namespace Smartstore.Web.Controllers
 
             if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             if (!cart.IsShippingRequired())
@@ -449,7 +450,7 @@ namespace Smartstore.Web.Controllers
 
             if (!_orderSettings.AnonymousCheckoutAllowed && customer.IsGuest())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             // Check whether payment workflow is required. We ignore reward points during cart total calculation.
@@ -500,7 +501,7 @@ namespace Smartstore.Web.Controllers
 
             if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             // Payment method 
@@ -509,7 +510,7 @@ namespace Smartstore.Web.Controllers
                 return RedirectToAction(nameof(PaymentMethod));
             }
 
-            var paymentMethodProvider = await _paymentService.LoadPaymentMethodBySystemNameAsync(paymentMethod, true, storeId);
+            var paymentMethodProvider = await _paymentService.LoadPaymentProviderBySystemNameAsync(paymentMethod, true, storeId);
             if (paymentMethodProvider == null)
             {
                 return RedirectToAction(nameof(PaymentMethod));
@@ -523,7 +524,14 @@ namespace Smartstore.Web.Controllers
             var state = _checkoutStateAccessor.CheckoutState;
             foreach (var kvp in form)
             {
-                state.PaymentData[kvp.Key] = kvp.Value.ToString();
+                if (kvp.Value.Count == 2 && kvp.Value[0] == "true")
+                {
+                    state.PaymentData[kvp.Key] = "true";
+                }
+                else
+                {
+                    state.PaymentData[kvp.Key] = kvp.Value.ToString();
+                }
             }
 
             // Validate info
@@ -548,7 +556,7 @@ namespace Smartstore.Web.Controllers
                 return new NotFoundResult();
             }
 
-            var paymentMethod = await _paymentService.LoadPaymentMethodBySystemNameAsync(paymentMethodSystemName);
+            var paymentMethod = await _paymentService.LoadPaymentProviderBySystemNameAsync(paymentMethodSystemName);
             if (paymentMethod == null)
             {
                 return new NotFoundResult();
@@ -560,8 +568,19 @@ namespace Smartstore.Web.Controllers
                 return new EmptyResult();
             }
 
-            var widgetContent = await infoWidget.InvokeAsync(new WidgetContext(ControllerContext));
-            return Content(widgetContent.ToHtmlString().ToString());
+            try
+            {
+                var widgetContent = await infoWidget.InvokeAsync(new WidgetContext(ControllerContext));
+                return Content(widgetContent.ToHtmlString().ToString());
+            }
+            catch (Exception ex)
+            {
+                // Log all but do not display inner exceptions.
+                Logger.Error(ex);
+                NotifyError(ex.Message);
+
+                return new EmptyResult();
+            }
         }
 
         public async Task<IActionResult> Confirm()
@@ -575,7 +594,7 @@ namespace Smartstore.Web.Controllers
 
             if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var model = new CheckoutConfirmModel();
@@ -598,7 +617,7 @@ namespace Smartstore.Web.Controllers
 
             if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var warnings = new List<string>();
@@ -646,7 +665,7 @@ namespace Smartstore.Web.Controllers
                 processPaymentRequest.StoreId = store.Id;
                 processPaymentRequest.CustomerId = customer.Id;
                 processPaymentRequest.PaymentMethodSystemName = customer.GenericAttributes.SelectedPaymentMethod;
-                
+
                 var placeOrderExtraData = new Dictionary<string, string>
                 {
                     ["CustomerComment"] = Request.Form["customercommenthidden"].ToString(),
@@ -661,6 +680,10 @@ namespace Smartstore.Web.Controllers
                     model.Warnings.AddRange(placeOrderResult.Errors.Select(HtmlUtility.ConvertPlainTextToHtml));
                 }
             }
+            catch (PaymentException ex)
+            {
+                return PaymentFailure(ex);
+            }
             catch (Exception ex)
             {
                 Logger.Error(ex);
@@ -673,25 +696,6 @@ namespace Smartstore.Web.Controllers
 
             if (placeOrderResult == null || !placeOrderResult.Success || model.Warnings.Any())
             {
-                var paymentMethod = await _paymentService.LoadPaymentMethodBySystemNameAsync(customer.GenericAttributes.SelectedPaymentMethod);
-                if (paymentMethod != null && 
-                    (paymentMethod.Value.PaymentMethodType == PaymentMethodType.Button || paymentMethod.Value.PaymentMethodType == PaymentMethodType.StandardAndButton))
-                {
-                    model.Warnings.Take(3).Each(x => NotifyError(x));
-
-                    if (paymentMethod.Value.PaymentMethodType == PaymentMethodType.Button)
-                    {
-                        // Redirect back to where the payment button is.
-                        return RedirectToAction(nameof(ShoppingCartController.Cart), "ShoppingCart");
-                    }
-
-                    if (paymentMethod.Value.PaymentMethodType == PaymentMethodType.StandardAndButton)
-                    {
-                        // Redirect back to payment selection page.
-                        return RedirectToAction(nameof(PaymentMethod));
-                    }
-                }
-
                 return View(model);
             }
 
@@ -703,6 +707,10 @@ namespace Smartstore.Web.Controllers
             try
             {
                 await _paymentService.PostProcessPaymentAsync(postProcessPaymentRequest);
+            }
+            catch (PaymentException ex)
+            {
+                return PaymentFailure(ex);
             }
             catch (Exception ex)
             {
@@ -720,6 +728,19 @@ namespace Smartstore.Web.Controllers
             }
 
             return RedirectToAction(nameof(Completed));
+
+            IActionResult PaymentFailure(PaymentException ex)
+            {
+                Logger.Error(ex);
+                NotifyError(ex.Message);
+
+                if (ex.RedirectRoute is RouteInfo routeInfo)
+                {
+                    return RedirectToAction(routeInfo.Action, routeInfo.Controller, routeInfo.RouteValues);
+                }
+
+                return RedirectToAction(nameof(PaymentMethod));
+            }
         }
 
         public async Task<IActionResult> Completed()
@@ -728,7 +749,7 @@ namespace Smartstore.Web.Controllers
 
             if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var store = Services.StoreContext.CurrentStore;

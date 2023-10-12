@@ -1,4 +1,5 @@
 ﻿using Smartstore.Collections;
+using Smartstore.ComponentModel;
 using Smartstore.Core.Catalog.Pricing;
 using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Content.Media;
@@ -20,12 +21,15 @@ namespace Smartstore.Web.Models.Catalog
         public Dictionary<int, MediaFileInfo> MediaFiles { get; set; } = new Dictionary<int, MediaFileInfo>();
         public Dictionary<string, LocalizedString> Resources { get; set; }
         public string LegalInfo { get; set; }
+        public string TaxExemptLegalInfo { get; set; }
         public Currency PrimaryCurrency { get; set; }
 
         public bool AllowPrices { get; set; }
         public bool AllowShoppingCart { get; set; }
         public bool AllowWishlist { get; set; }
         public string ShippingChargeTaxFormat { get; set; }
+
+        internal IMapper<Product, ProductSummaryItemModel> CustomMapper { get; set; }
     }
 
     public class ProductSummaryItemModel : EntityModelBase

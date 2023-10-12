@@ -1,6 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Text;
-
 using Smartstore.Caching;
 using Smartstore.Collections;
 using Smartstore.Core.Catalog.Products;
@@ -11,6 +10,7 @@ using Smartstore.Core.Security;
 using Smartstore.Core.Seo;
 using Smartstore.Core.Stores;
 using Smartstore.Data;
+using Smartstore.Utilities;
 
 namespace Smartstore.Core.Catalog.Categories
 {
@@ -19,12 +19,12 @@ namespace Smartstore.Core.Catalog.Categories
         internal static TimeSpan CategoryTreeCacheDuration = TimeSpan.FromHours(6);
 
         // {0} = IncludeHidden, {1} = CustomerRoleIds, {2} = StoreId
-        internal const string CATEGORY_TREE_KEY = "category:tree-{0}-{1}-{2}";
-        internal const string CATEGORY_TREE_PATTERN_KEY = "category:tree-*";
+        internal const string CategoryTreeKey = "category:tree-{0}-{1}-{2}";
+        internal const string CategoryTreePatternKey = "category:tree-*";
 
         // {0} = IncludeHidden, {1} = CustomerId, {2} = StoreId, {3} ParentCategoryId
-        private const string CATEGORIES_BY_PARENT_CATEGORY_ID_KEY = "category:byparent-{0}-{1}-{2}-{3}";
-        internal const string CATEGORIES_PATTERN_KEY = "category:*";
+        const string CategoriesByParentIdKey = "category:byparent-{0}-{1}-{2}-{3}";
+        internal const string CategoriesPatternKey = "category:*";
 
         private readonly SmartDbContext _db;
         private readonly IWorkContext _workContext;
@@ -117,13 +117,10 @@ namespace Smartstore.Core.Catalog.Categories
             bool touchExistingAcls = false,
             bool categoriesOnly = false)
         {
-            var categoryEntityName = nameof(Category);
-            var productEntityName = nameof(Product);
             var affectedCategories = 0;
             var affectedProducts = 0;
 
             var allCustomerRoleIds = await _db.CustomerRoles
-                .AsQueryable()
                 .Select(x => x.Id)
                 .ToListAsync();
 
@@ -132,93 +129,43 @@ namespace Smartstore.Core.Catalog.Categories
 
             using (var scope = new DbContextScope(_db, autoDetectChanges: false))
             {
-                await ProcessCategory(scope, referenceCategory);
-            }
-
-            await _cache.RemoveByPatternAsync(AclService.ACL_SEGMENT_PATTERN);
-
-            return (affectedCategories, affectedProducts);
-
-            async Task ProcessCategory(DbContextScope scope, Category c)
-            {
                 // Process sub-categories.
                 var subCategories = await _db.Categories
-                    .AsQueryable()
-                    .Where(x => x.ParentId == c.Id)
-                    .OrderBy(x => x.DisplayOrder)
+                    .ApplyDescendantsFilter(referenceCategory)
+                    .Select(x => (Category)x)
                     .ToListAsync();
+
+                var aclRecords = (await _db.AclRecords
+                    .AsNoTracking()
+                    .Where(x => subCategories.Select(x => x.Id).Contains(x.EntityId) && x.EntityName == nameof(Category))
+                    .ToListAsync())
+                    .ToMultimap(x => x.EntityId, x => x);
 
                 foreach (var subCategory in subCategories)
                 {
-                    if (subCategory.SubjectToAcl != referenceCategory.SubjectToAcl)
-                    {
-                        subCategory.SubjectToAcl = referenceCategory.SubjectToAcl;
-                    }
-
-                    var aclRecords = await _db.AclRecords
-                        .ApplyEntityFilter(subCategory)
-                        .ToListAsync();
-
-                    var aclRecordsDic = aclRecords.ToDictionarySafe(x => x.CustomerRoleId);
-
-                    foreach (var roleId in allCustomerRoleIds)
-                    {
-                        if (referenceRoleIds.Contains(roleId))
-                        {
-                            if (!aclRecordsDic.ContainsKey(roleId))
-                            {
-                                _db.AclRecords.Add(new AclRecord { CustomerRoleId = roleId, EntityId = subCategory.Id, EntityName = categoryEntityName });
-                            }
-                        }
-                        else if (aclRecordsDic.TryGetValue(roleId, out var aclRecordToDelete))
-                        {
-                            _db.AclRecords.Remove(aclRecordToDelete);
-                        }
-                    }
+                    subCategory.SubjectToAcl = referenceCategory.SubjectToAcl;
+                    ProcessRoles(subCategory.Id, nameof(Category), aclRecords);
                 }
 
                 await scope.CommitAsync();
                 affectedCategories += subCategories.Count;
 
-                // Process products.
-                var categoryIds = new HashSet<int>(subCategories.Select(x => x.Id))
-                {
-                    c.Id
-                };
-
-                var searchQuery = new CatalogSearchQuery().WithCategoryIds(null, categoryIds.ToArray());
+                var searchQuery = new CatalogSearchQuery().WithCategoryTreePath(referenceCategory.TreePath, featuredOnly: null, includeSelf: true);
                 var productsQuery = _catalogSearchService.PrepareQuery(searchQuery);
                 var productsPager = new FastPager<Product>(productsQuery, 500);
 
                 while ((await productsPager.ReadNextPageAsync<Product>()).Out(out var products))
                 {
+                    aclRecords = (await _db.AclRecords
+                        .AsNoTracking()
+                        .Where(x => products.Select(x => x.Id).Contains(x.EntityId) && x.EntityName == nameof(Product))
+                        .ToListAsync())
+                        .ToMultimap(x => x.EntityId, x => x);
+
                     foreach (var product in products)
                     {
-                        if (product.SubjectToAcl != referenceCategory.SubjectToAcl)
-                        {
-                            product.SubjectToAcl = referenceCategory.SubjectToAcl;
-                        }
-
-                        var aclRecords = await _db.AclRecords
-                            .ApplyEntityFilter(product)
-                            .ToListAsync();
-
-                        var aclRecordsDic = aclRecords.ToDictionarySafe(x => x.CustomerRoleId);
-
-                        foreach (var roleId in allCustomerRoleIds)
-                        {
-                            if (referenceRoleIds.Contains(roleId))
-                            {
-                                if (!aclRecordsDic.ContainsKey(roleId))
-                                {
-                                    _db.AclRecords.Add(new AclRecord { CustomerRoleId = roleId, EntityId = product.Id, EntityName = productEntityName });
-                                }
-                            }
-                            else if (aclRecordsDic.TryGetValue(roleId, out var aclRecordToDelete))
-                            {
-                                _db.AclRecords.Remove(aclRecordToDelete);
-                            }
-                        }
+                        product.SubjectToAcl = referenceCategory.SubjectToAcl;
+                        ProcessRoles(product.Id, nameof(Product), aclRecords);
                     }
 
                     await scope.CommitAsync();
@@ -227,17 +174,30 @@ namespace Smartstore.Core.Catalog.Categories
 
                 await scope.CommitAsync();
 
-                try
-                {
-                    scope.DbContext.DetachEntities(x => x is Product || x is Category || x is AclRecord, false);
-                }
-                catch 
-                { 
-                }
+                CommonHelper.TryAction(() => scope.DbContext.DetachEntities(x => x is Product || x is Category || x is AclRecord, false));
+            }
 
-                foreach (var subCategory in subCategories)
+            await _cache.RemoveByPatternAsync(AclService.ACL_SEGMENT_PATTERN);
+
+            return (affectedCategories, affectedProducts);
+
+            void ProcessRoles(int entityId, string entityName, Multimap<int, AclRecord> aclRecords)
+            {
+                var aclRecordsDic = aclRecords[entityId].ToDictionarySafe(x => x.CustomerRoleId);
+
+                foreach (var roleId in allCustomerRoleIds)
                 {
-                    await ProcessCategory(scope, subCategory);
+                    if (referenceRoleIds.Contains(roleId))
+                    {
+                        if (!aclRecordsDic.ContainsKey(roleId))
+                        {
+                            _db.AclRecords.Add(new AclRecord { CustomerRoleId = roleId, EntityId = entityId, EntityName = entityName });
+                        }
+                    }
+                    else if (aclRecordsDic.TryGetValue(roleId, out var aclRecordToDelete))
+                    {
+                        _db.AclRecords.Remove(aclRecordToDelete);
+                    }
                 }
             }
         }
@@ -248,8 +208,6 @@ namespace Smartstore.Core.Catalog.Categories
             bool touchExistingAcls = false,
             bool categoriesOnly = false)
         {
-            var categoryEntityName = nameof(Category);
-            var productEntityName = nameof(Product);
             var affectedCategories = 0;
             var affectedProducts = 0;
 
@@ -263,93 +221,43 @@ namespace Smartstore.Core.Catalog.Categories
 
             using (var scope = new DbContextScope(_db, autoDetectChanges: false))
             {
-                await ProcessCategory(scope, referenceCategory);
-            }
-
-            await _cache.RemoveByPatternAsync(StoreMappingService.STOREMAPPING_SEGMENT_PATTERN);
-
-            return (affectedCategories, affectedProducts);
-
-            async Task ProcessCategory(DbContextScope scope, Category c)
-            {
                 // Process sub-categories.
                 var subCategories = await _db.Categories
-                    .AsQueryable()
-                    .Where(x => x.ParentId == c.Id)
-                    .OrderBy(x => x.DisplayOrder)
+                    .ApplyDescendantsFilter(referenceCategory)
+                    .Select(x => (Category)x)
                     .ToListAsync();
+
+                var storeMappings = (await _db.StoreMappings
+                    .AsNoTracking()
+                    .Where(x => subCategories.Select(x => x.Id).Contains(x.EntityId) && x.EntityName == nameof(Category))
+                    .ToListAsync())
+                    .ToMultimap(x => x.EntityId, x => x);
 
                 foreach (var subCategory in subCategories)
                 {
-                    if (subCategory.LimitedToStores != referenceCategory.LimitedToStores)
-                    {
-                        subCategory.LimitedToStores = referenceCategory.LimitedToStores;
-                    }
-
-                    var storeMappings = await _db.StoreMappings
-                        .ApplyEntityFilter(subCategory)
-                        .ToListAsync();
-
-                    var storeMappingsDic = storeMappings.ToDictionarySafe(x => x.StoreId);
-
-                    foreach (var storeId in allStoreIds)
-                    {
-                        if (referenceStoreMappingIds.Contains(storeId))
-                        {
-                            if (!storeMappingsDic.ContainsKey(storeId))
-                            {
-                                _db.StoreMappings.Add(new StoreMapping { StoreId = storeId, EntityId = subCategory.Id, EntityName = categoryEntityName });
-                            }
-                        }
-                        else if (storeMappingsDic.TryGetValue(storeId, out var storeMappingToDelete))
-                        {
-                            _db.StoreMappings.Remove(storeMappingToDelete);
-                        }
-                    }
+                    subCategory.LimitedToStores = referenceCategory.LimitedToStores;
+                    ProcessStoreMappings(subCategory.Id, nameof(Category), storeMappings);
                 }
 
                 await scope.CommitAsync();
                 affectedCategories += subCategories.Count;
 
-                // Process products.
-                var categoryIds = new HashSet<int>(subCategories.Select(x => x.Id))
-                {
-                    c.Id
-                };
-
-                var searchQuery = new CatalogSearchQuery().WithCategoryIds(null, categoryIds.ToArray());
+                var searchQuery = new CatalogSearchQuery().WithCategoryTreePath(referenceCategory.TreePath, featuredOnly: null, includeSelf: true);
                 var productsQuery = _catalogSearchService.PrepareQuery(searchQuery);
                 var productsPager = new FastPager<Product>(productsQuery, 500);
 
                 while ((await productsPager.ReadNextPageAsync<Product>()).Out(out var products))
                 {
+                    storeMappings = (await _db.StoreMappings
+                        .AsNoTracking()
+                        .Where(x => products.Select(x => x.Id).Contains(x.EntityId) && x.EntityName == nameof(Product))
+                        .ToListAsync())
+                        .ToMultimap(x => x.EntityId, x => x);
+
                     foreach (var product in products)
                     {
-                        if (product.LimitedToStores != referenceCategory.LimitedToStores)
-                        {
-                            product.LimitedToStores = referenceCategory.LimitedToStores;
-                        }
-
-                        var storeMappings = await _db.StoreMappings
-                            .ApplyEntityFilter(product)
-                            .ToListAsync();
-
-                        var storeMappingsDic = storeMappings.ToDictionarySafe(x => x.StoreId);
-
-                        foreach (var storeId in allStoreIds)
-                        {
-                            if (referenceStoreMappingIds.Contains(storeId))
-                            {
-                                if (!storeMappingsDic.ContainsKey(storeId))
-                                {
-                                    _db.StoreMappings.Add(new StoreMapping { StoreId = storeId, EntityId = product.Id, EntityName = productEntityName });
-                                }
-                            }
-                            else if (storeMappingsDic.TryGetValue(storeId, out var storeMappingToDelete))
-                            {
-                                _db.StoreMappings.Remove(storeMappingToDelete);
-                            }
-                        }
+                        product.LimitedToStores = referenceCategory.LimitedToStores;
+                        ProcessStoreMappings(product.Id, nameof(Product), storeMappings);
                     }
 
                     await scope.CommitAsync();
@@ -358,17 +266,30 @@ namespace Smartstore.Core.Catalog.Categories
 
                 await scope.CommitAsync();
 
-                try
-                {
-                    scope.DbContext.DetachEntities(x => x is Product || x is Category || x is StoreMapping, false);
-                }
-                catch 
-                { 
-                }
+                CommonHelper.TryAction(() => scope.DbContext.DetachEntities(x => x is Product || x is Category || x is StoreMapping, false));
+            }
 
-                foreach (var subCategory in subCategories)
+            await _cache.RemoveByPatternAsync(StoreMappingService.STOREMAPPING_SEGMENT_PATTERN);
+
+            return (affectedCategories, affectedProducts);
+
+            void ProcessStoreMappings(int entityId, string entityName, Multimap<int, StoreMapping> storeMappings)
+            {
+                var storeMappingsDic = storeMappings[entityId].ToDictionarySafe(x => x.StoreId);
+
+                foreach (var storeId in allStoreIds)
                 {
-                    await ProcessCategory(scope, subCategory);
+                    if (referenceStoreMappingIds.Contains(storeId))
+                    {
+                        if (!storeMappingsDic.ContainsKey(storeId))
+                        {
+                            _db.StoreMappings.Add(new StoreMapping { StoreId = storeId, EntityId = entityId, EntityName = entityName });
+                        }
+                    }
+                    else if (storeMappingsDic.TryGetValue(storeId, out var storeMappingToDelete))
+                    {
+                        _db.StoreMappings.Remove(storeMappingToDelete);
+                    }
                 }
             }
         }
@@ -381,7 +302,7 @@ namespace Smartstore.Core.Catalog.Categories
             }
 
             var storeId = _storeContext.CurrentStore.Id;
-            var cacheKey = CATEGORIES_BY_PARENT_CATEGORY_ID_KEY.FormatInvariant(includeHidden, _workContext.CurrentCustomer.Id, storeId, parentCategoryId);
+            var cacheKey = CategoriesByParentIdKey.FormatInvariant(includeHidden, _workContext.CurrentCustomer.Id, storeId, parentCategoryId);
 
             var result = await _requestCache.GetAsync(cacheKey, async () =>
             {
@@ -403,7 +324,7 @@ namespace Smartstore.Core.Catalog.Categories
         {
             Guard.NotNull(productIds);
 
-            if (!productIds.Any())
+            if (productIds.Length == 0)
             {
                 return new List<ProductCategory>();
             }
@@ -417,9 +338,7 @@ namespace Smartstore.Core.Catalog.Categories
 
             var productCategoriesQuery = _db.ProductCategories
                 .AsNoTracking()
-                .AsSplitQuery()
-                .Include(x => x.Category).ThenInclude(x => x.MediaFile)
-                .Include(x => x.Category).ThenInclude(x => x.AppliedDiscounts);
+                .Include(x => x.Category);
 
             var query =
                 from pc in productCategoriesQuery
@@ -499,12 +418,53 @@ namespace Smartstore.Core.Catalog.Categories
             return path;
         }
 
+        public async static Task<int> RebuidTreePathsAsync(SmartDbContext context, CancellationToken cancelToken = default)
+        {
+            var numAffected = 0;
+            var folders = await context.MediaFolders
+                .Include(x => x.Children)
+                .Where(x => x.ParentId == null)
+                .ToListAsync(cancelToken);
+
+            foreach (var folder in folders)
+            {
+                BuildTreePath(folder);
+            }
+            numAffected = await context.SaveChangesAsync(cancelToken);
+
+            var categories = await context.Categories
+                .Include(x => x.Children)
+                .Where(x => x.ParentId == null)
+                .ToListAsync(cancelToken);
+
+            foreach (var category in categories)
+            {
+                BuildTreePath(category);
+            }
+            numAffected += await context.SaveChangesAsync(cancelToken);
+
+            return numAffected;
+
+            static void BuildTreePath(ITreeNode node)
+            {
+                node.TreePath = node.BuildTreePath();
+                var childNodes = node.GetChildNodes();
+                if (!childNodes.IsNullOrEmpty())
+                {
+                    foreach (var childNode in childNodes)
+                    {
+                        BuildTreePath(childNode);
+                    }
+                }
+            }
+        }
+
         public async Task<TreeNode<ICategoryNode>> GetCategoryTreeAsync(int rootCategoryId = 0, bool includeHidden = false, int storeId = 0)
         {
             var rolesIds = _workContext.CurrentCustomer.GetRoleIds();
             var storeToken = _db.QuerySettings.IgnoreMultiStore ? "0" : storeId.ToString();
             var rolesToken = _db.QuerySettings.IgnoreAcl || includeHidden ? "0" : string.Join(",", rolesIds);
-            var cacheKey = CATEGORY_TREE_KEY.FormatInvariant(includeHidden.ToString().ToLower(), rolesToken, storeToken);
+            var cacheKey = CategoryTreeKey.FormatInvariant(includeHidden.ToString().ToLower(), rolesToken, storeToken);
 
             var root = await _cache.GetAsync(cacheKey, async o =>
             {

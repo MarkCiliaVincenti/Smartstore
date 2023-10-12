@@ -1,4 +1,6 @@
-﻿namespace Smartstore.Core.Identity
+﻿using Smartstore.Core.Common;
+
+namespace Smartstore.Core.Identity
 {
     public enum PasswordFormat
     {

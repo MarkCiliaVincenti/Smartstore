@@ -1,11 +1,15 @@
 ﻿using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Autofac;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Primitives;
 using Smartstore.Engine;
 using Smartstore.Engine.Modularity;
@@ -20,9 +24,10 @@ namespace Smartstore.Http
         private static IFileSystem _webRoot;
         private static IHttpContextAccessor _httpContextAccessor;
         private static PathString? _webBasePath;
+        private static Lazy<int> _resolvedHttpsPort = new(TryResolveHttpsPort);
 
         private static readonly AsyncLock _asyncLock = new();
-        private static readonly Regex _htmlPathPattern = new(@"(?<=(?:href|src)=(?:""|'))(?!https?://)(?<url>[^(?:""|')]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+        private static readonly Regex _htmlPathPattern = new(@"(?<=(?:href|src)=(?:""|'))(?<url>[^(?:""|')]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
         private static readonly Regex _cssPathPattern = new(@"url\('(?<url>.+)'\)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
         private static readonly ConcurrentDictionary<int, string> _safeLocalHostNames = new();
 
@@ -188,9 +193,9 @@ namespace Smartstore.Http
         /// </remarks>
         public static string MakeAllUrlsAbsolute(string html, string protocol, string host)
         {
-            Guard.NotEmpty(html, nameof(html));
-            Guard.NotEmpty(protocol, nameof(protocol));
-            Guard.NotEmpty(host, nameof(host));
+            Guard.NotEmpty(html);
+            Guard.NotEmpty(protocol);
+            Guard.NotEmpty(host);
 
             var scheme = protocol.TrimEnd('/').TrimEnd(':');
             var baseUrl = scheme + "://" + host.TrimEnd('/');
@@ -199,7 +204,11 @@ namespace Smartstore.Http
             {
                 var url = match.Groups["url"].Value;
 
-                if (url.StartsWith("//"))
+                if (url.StartsWith("http") || url.StartsWith("mailto:") || url.StartsWith("javascript:"))
+                {
+                    return url;
+                }
+                else if (url.StartsWith("//"))
                 {
                     return scheme + ':' + url;
                 }
@@ -418,6 +427,58 @@ namespace Smartstore.Http
             return !string.IsNullOrEmpty(extensionName) && !string.IsNullOrEmpty(remainingPath);
         }
 
+        /// <summary>
+        /// Gets the server's HTTPS port by looking up HTTPS_PORT environment variable,
+        /// then IServerAddressesFeature.
+        /// </summary>
+        /// <returns>
+        /// The HTTPS port or -1 if resolution failed.
+        /// </returns>
+        public static int GetServerHttpsPort()
+            => _resolvedHttpsPort.Value;
+
+        private static int TryResolveHttpsPort()
+        {
+            var appContext = EngineContext.Current?.Application;
+            if (appContext == null)
+            {
+                return -1;
+            }
+
+            var config = appContext.Configuration;
+            if (config != null)
+            {
+                var port = GetIntConfigValue(config, "HTTPS_PORT") ?? GetIntConfigValue(config, "ANCM_HTTPS_PORT");
+                if (port.HasValue)
+                {
+                    return port.Value;
+                }
+            }
+
+            if (appContext.Services.TryResolve<IServer>(out var server))
+            {
+                var serverAddressFeature = server.Features.Get<IServerAddressesFeature>();
+                if (serverAddressFeature == null)
+                {
+                    return -1;
+                }
+
+                foreach (var address in serverAddressFeature.Addresses)
+                {
+                    var bindingAddress = BindingAddress.Parse(address);
+                    if (bindingAddress.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return bindingAddress.Port;
+                    }
+                }
+            }
+
+            return -1;
+
+            static int? GetIntConfigValue(IConfiguration config, string name) =>
+                int.TryParse(config[name], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value) ? value : null;
+        }
+
         public static async Task<Uri> CreateUriForSafeLocalCallAsync(Uri requestUri)
         {
             Guard.NotNull(requestUri);
@@ -452,26 +513,33 @@ namespace Smartstore.Http
                     return host;
                 }
 
-                var safeHost = await TestHostsAsync(requestUri.Port);
+                // Don't obtain from factory: risk of mem leak if caller is IHostedService.
+                using var httpClient = new HttpClient(new HttpClientHandler(), true)
+                {
+                    Timeout = TimeSpan.FromSeconds(5),
+                };
+                httpClient.DefaultRequestHeaders.ExpectContinue = true;
+
+                var safeHost = await TestHostsAsync(httpClient, requestUri.Port);
                 _safeLocalHostNames.TryAdd(requestUri.Port, safeHost);
 
                 return safeHost;
             }
 
-            async Task<string> TestHostsAsync(int port)
+            async Task<string> TestHostsAsync(HttpClient httpClient, int port)
             {
                 // First try original host
-                if (await TestHostAsync(requestUri, requestUri.Host, 5000))
+                if (await TestHostAsync(requestUri, requestUri.Host, httpClient))
                 {
                     return requestUri.Host;
                 }
-
+                
                 // Try loopback
                 var hostName = Dns.GetHostName();
                 var hosts = new List<string> { "localhost", hostName, "127.0.0.1" };
                 foreach (var host in hosts)
                 {
-                    if (await TestHostAsync(requestUri, host, 500))
+                    if (await TestHostAsync(requestUri, host, httpClient))
                     {
                         return host;
                     }
@@ -484,7 +552,7 @@ namespace Smartstore.Http
 
                 foreach (var host in hosts)
                 {
-                    if (await TestHostAsync(requestUri, host, 500))
+                    if (await TestHostAsync(requestUri, host, httpClient))
                     {
                         return host;
                     }
@@ -495,20 +563,16 @@ namespace Smartstore.Http
             }
         }
 
-        private static async Task<bool> TestHostAsync(Uri originalUri, string host, int timeout)
+        private static async Task<bool> TestHostAsync(Uri originalUri, string host, HttpClient httpClient)
         {
             var url = string.Format("{0}://{1}/taskscheduler/noop",
                 originalUri.Scheme,
                 originalUri.IsDefaultPort ? host : host + ":" + originalUri.Port);
             var uri = new Uri(url);
 
-            var client = EngineContext.Current.Application.Services.Resolve<IHttpClientFactory>()?.CreateClient("local");
-            client.Timeout = TimeSpan.FromMilliseconds(timeout);
-            client.DefaultRequestHeaders.ExpectContinue = false;
-
             try
             {
-                using var response = await client.GetAsync(uri);
+                using var response = await httpClient.GetAsync(uri);
                 if (response.IsSuccessStatusCode)
                 {
                     return true;

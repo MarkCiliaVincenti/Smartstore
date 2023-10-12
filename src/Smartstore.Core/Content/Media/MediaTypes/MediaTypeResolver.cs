@@ -14,7 +14,7 @@ namespace Smartstore.Core.Content.Media
         private readonly ICacheManager _cache;
         private readonly MediaSettings _mediaSettings;
 
-        private static HashSet<string> _mapInvalidatorSettingKeys = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> _mapInvalidatorSettingKeys = new(StringComparer.OrdinalIgnoreCase)
         {
             TypeHelper.NameOf<MediaSettings>(x => x.ImageTypes, true),
             TypeHelper.NameOf<MediaSettings>(x => x.VideoTypes, true),
@@ -29,6 +29,8 @@ namespace Smartstore.Core.Content.Media
             _cache = cache;
             _mediaSettings = mediaSettings;
         }
+
+        public ILogger Logger { get; set; } = NullLogger.Instance;
 
         #region Invalidation Hook
 
@@ -93,7 +95,7 @@ namespace Smartstore.Core.Content.Media
             {
                 if (filter[0] == '.')
                 {
-                    extensions.Add(filter.Substring(1));
+                    extensions.Add(filter[1..]);
                 }
                 else
                 {
@@ -124,14 +126,24 @@ namespace Smartstore.Core.Content.Media
                     var arr = extensions.EmptyNull()
                         .Replace(Environment.NewLine, " ")
                         .ToLower()
-                        .Split(new char[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                        .Split(new char[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
                     if (arr.Length == 0)
                     {
                         arr = forType.DefaultExtensions;
                     }
 
-                    arr.Each(x => map[x.Trim()] = forType.Name);
+                    foreach (var ext in arr)
+                    {
+                        if (map.TryGetValue(ext, out var typeName) && typeName != forType.Name)
+                        {
+                            Logger.Warn($"Cannot assign file extension to type '{forType.Name}' because it is already assigned to '{typeName}'.");
+                        }
+                        else
+                        {
+                            map[ext] = forType.Name;
+                        }
+                    }
                 }
             });
         }

@@ -1,8 +1,22 @@
+/// <reference path="_variables.scss" />
+/// <reference path="_functions.scss" />
+/// <reference path="_mixins.scss" />
+
 // stylelint-disable selector-no-qualifying-type
 
 //
 // Base styles
 //
+
+@mixin start-radius-0() {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+@mixin end-radius-0() {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
 
 .input-group {
   position: relative;
@@ -12,19 +26,19 @@
   width: 100%;
 
   > .form-control,
+  > .form-control-plaintext,
   > .custom-select,
   > .custom-file {
     position: relative; // For focus state's z-index
     flex: 1 1 auto;
-    // Add width 1% and flex-basis auto to ensure that button will not wrap out
-    // the column. Applies to IE Edge+ and Firefox. Chrome does not require this.
     width: 1%;
+    min-width: 0; // https://stackoverflow.com/questions/36247140/why-dont-flex-items-shrink-past-content-size
     margin-bottom: 0;
 
     + .form-control,
     + .custom-select,
     + .custom-file {
-      margin-left: -$input-border-width;
+      margin-inline-start: -$input-border-width;
     }
   }
 
@@ -42,8 +56,9 @@
 
   > .form-control,
   > .custom-select {
-    &:not(:last-child) { @include border-right-radius(0); }
-    &:not(:first-child) { @include border-left-radius(0); }
+    &:not(:first-child) {
+        @include start-radius-0();
+    }
   }
 
   // Custom file inputs have more complex markup, thus requiring different
@@ -53,8 +68,26 @@
     align-items: center;
 
     &:not(:last-child) .custom-file-label,
-    &:not(:last-child) .custom-file-label::after { @include border-right-radius(0); }
-    &:not(:first-child) .custom-file-label { @include border-left-radius(0); }
+    &:not(:last-child) .custom-file-label::after { @include end-radius-0(); }
+    &:not(:first-child) .custom-file-label { @include start-radius-0(); }
+  }
+
+  &:not(.has-validation) {
+    > .form-control:not(:last-child),
+    > .custom-select:not(:last-child),
+    > .custom-file:not(:last-child) .custom-file-label,
+    > .custom-file:not(:last-child) .custom-file-label::after {
+      @include end-radius-0();
+    }
+  }
+
+  &.has-validation {
+    > .form-control:nth-last-child(n + 3),
+    > .custom-select:nth-last-child(n + 3),
+    > .custom-file:nth-last-child(n + 3) .custom-file-label,
+    > .custom-file:nth-last-child(n + 3) .custom-file-label::after {
+      @include end-radius-0();
+    }
   }
 }
 
@@ -75,18 +108,22 @@
   .btn {
     position: relative;
     z-index: 2;
+
+    &:focus {
+      z-index: 3;
+    }
   }
 
   .btn + .btn,
   .btn + .input-group-text,
   .input-group-text + .input-group-text,
   .input-group-text + .btn {
-    margin-left: -$input-border-width;
+    margin-inline-start: -$input-border-width;
   }
 }
 
-.input-group-prepend { margin-right: -$input-border-width; }
-.input-group-append { margin-left: -$input-border-width; }
+.input-group-prepend { margin-inline-end: -$input-border-width; }
+.input-group-append { margin-inline-start: -$input-border-width; }
 
 
 // Textual addons
@@ -99,7 +136,7 @@
   align-items: center;
   padding: $input-padding-y $input-padding-x;
   margin-bottom: 0; // Allow use of <label> elements by overriding our default margin-bottom
-  font-size: $font-size-base; // Match inputs
+  @include font-size($input-font-size); // Match inputs
   font-weight: $font-weight-normal;
   line-height: $input-line-height;
   color: $input-group-addon-color;
@@ -122,28 +159,49 @@
 // Remix the default form control sizing classes into new ones for easier
 // manipulation.
 
-.input-group-lg > .form-control,
-.input-group-lg > .input-group-prepend > .input-group-text,
-.input-group-lg > .input-group-append > .input-group-text,
-.input-group-lg > .input-group-prepend > .btn,
-.input-group-lg > .input-group-append > .btn {
+.input-group-lg > .form-control:not(textarea),
+.input-group-lg > .custom-select {
   height: $input-height-lg;
+}
+
+.input-group-lg > .form-control,
+.input-group-lg > .custom-select,
+.input-group-lg > .input-group-prepend > .input-group-text,
+.input-group-lg > .input-group-append > .input-group-text {
   padding: $input-padding-y-lg $input-padding-x-lg;
-  font-size: $font-size-lg;
+  @include font-size($input-font-size-lg);
   line-height: $input-line-height-lg;
   @include border-radius($input-border-radius-lg);
 }
 
-.input-group-sm > .form-control,
-.input-group-sm > .input-group-prepend > .input-group-text,
-.input-group-sm > .input-group-append > .input-group-text,
-.input-group-sm > .input-group-prepend > .btn,
-.input-group-sm > .input-group-append > .btn {
+.input-group-lg > .input-group-prepend > .btn,
+.input-group-lg > .input-group-append > .btn {
+  @extend .btn-lg;
+}
+
+.input-group-sm > .form-control:not(textarea),
+.input-group-sm > .custom-select {
   height: $input-height-sm;
+}
+
+.input-group-sm > .form-control,
+.input-group-sm > .custom-select,
+.input-group-sm > .input-group-prepend > .input-group-text,
+.input-group-sm > .input-group-append > .input-group-text {
   padding: $input-padding-y-sm $input-padding-x-sm;
-  font-size: $font-size-sm;
+  @include font-size($input-font-size-sm);
   line-height: $input-line-height-sm;
   @include border-radius($input-border-radius-sm);
+}
+
+.input-group-sm > .input-group-prepend > .btn,
+.input-group-sm > .input-group-append > .btn {
+  @extend .btn-sm;
+}
+
+.input-group-lg > .custom-select,
+.input-group-sm > .custom-select {
+  padding-inline-end: $custom-select-padding-x + $custom-select-indicator-padding;
 }
 
 
@@ -156,11 +214,13 @@
 
 .input-group > .input-group-prepend > .btn,
 .input-group > .input-group-prepend > .input-group-text,
-.input-group > .input-group-append:not(:last-child) > .btn,
-.input-group > .input-group-append:not(:last-child) > .input-group-text,
+.input-group:not(.has-validation) > .input-group-append:not(:last-child) > .btn,
+.input-group:not(.has-validation) > .input-group-append:not(:last-child) > .input-group-text,
+.input-group.has-validation > .input-group-append:nth-last-child(n + 3) > .btn,
+.input-group.has-validation > .input-group-append:nth-last-child(n + 3) > .input-group-text,
 .input-group > .input-group-append:last-child > .btn:not(:last-child):not(.dropdown-toggle),
 .input-group > .input-group-append:last-child > .input-group-text:not(:last-child) {
-  @include border-right-radius(0);
+  @include end-radius-0();
 }
 
 .input-group > .input-group-append > .btn,
@@ -169,5 +229,5 @@
 .input-group > .input-group-prepend:not(:first-child) > .input-group-text,
 .input-group > .input-group-prepend:first-child > .btn:not(:first-child),
 .input-group > .input-group-prepend:first-child > .input-group-text:not(:first-child) {
-  @include border-left-radius(0);
+  @include start-radius-0();
 }

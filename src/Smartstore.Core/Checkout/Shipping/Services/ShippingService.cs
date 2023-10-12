@@ -22,6 +22,7 @@ namespace Smartstore.Core.Checkout.Shipping
         private readonly ShippingSettings _shippingSettings;
         private readonly IProviderManager _providerManager;
         private readonly ISettingFactory _settingFactory;
+        private readonly IStoreContext _storeContext;
         private readonly IWorkContext _workContext;
         private readonly SmartDbContext _db;
 
@@ -32,6 +33,7 @@ namespace Smartstore.Core.Checkout.Shipping
             ShippingSettings shippingSettings,
             IProviderManager providerManager,
             ISettingFactory settingFactory,
+            IStoreContext storeContext,
             IWorkContext workContext,
             SmartDbContext db)
         {
@@ -41,6 +43,7 @@ namespace Smartstore.Core.Checkout.Shipping
             _shippingSettings = shippingSettings;
             _providerManager = providerManager;
             _settingFactory = settingFactory;
+            _storeContext = storeContext;
             _workContext = workContext;
             _db = db;
         }
@@ -48,27 +51,27 @@ namespace Smartstore.Core.Checkout.Shipping
         public Localizer T { get; set; } = NullLocalizer.Instance;
         public ILogger Logger { get; set; } = NullLogger.Instance;
 
-        public virtual IEnumerable<Provider<IShippingRateComputationMethod>> LoadActiveShippingRateComputationMethods(int storeId = 0, string systemName = null)
+        public virtual IEnumerable<Provider<IShippingRateComputationMethod>> LoadEnabledShippingProviders(int storeId = 0, string systemName = null)
         {
-            var allMethods = _providerManager.GetAllProviders<IShippingRateComputationMethod>(storeId);
+            var allProviders = _providerManager.GetAllProviders<IShippingRateComputationMethod>(storeId);
 
             // Get active shipping rate computation methods.
-            var activeMethods = allMethods
-                .Where(p => p.Value.IsActive && _shippingSettings.ActiveShippingRateComputationMethodSystemNames.Contains(p.Metadata.SystemName, StringComparer.InvariantCultureIgnoreCase));
+            var enabledProviders = allProviders
+                .Where(p => _shippingSettings.ActiveShippingRateComputationMethodSystemNames.Contains(p.Metadata.SystemName, StringComparer.InvariantCultureIgnoreCase));
 
-            if (!activeMethods.Any())
+            if (!enabledProviders.Any())
             {
                 // Try get a fallback shipping rate computation method.
-                var fallbackMethod = allMethods.FirstOrDefault(x => x.IsShippingRateComputationMethodActive(_shippingSettings)) ?? allMethods.FirstOrDefault();
+                var fallbackProvider = allProviders.FirstOrDefault(x => x.IsShippingProviderEnabled(_shippingSettings)) ?? allProviders.FirstOrDefault();
 
-                if (fallbackMethod != null)
+                if (fallbackProvider != null)
                 {
                     _shippingSettings.ActiveShippingRateComputationMethodSystemNames.Clear();
-                    _shippingSettings.ActiveShippingRateComputationMethodSystemNames.Add(fallbackMethod.Metadata.SystemName);
+                    _shippingSettings.ActiveShippingRateComputationMethodSystemNames.Add(fallbackProvider.Metadata.SystemName);
 
                     _settingFactory.SaveSettingsAsync(_shippingSettings).GetAwaiter().GetResult();
 
-                    return new Provider<IShippingRateComputationMethod>[] { fallbackMethod };
+                    return new Provider<IShippingRateComputationMethod>[] { fallbackProvider };
                 }
 
                 if (DataSettings.DatabaseIsInstalled())
@@ -77,7 +80,7 @@ namespace Smartstore.Core.Checkout.Shipping
                 }
             }
 
-            return activeMethods;
+            return enabledProviders;
         }
 
         public virtual async Task<List<ShippingMethod>> GetAllShippingMethodsAsync(int storeId = 0, bool matchRules = false)
@@ -96,8 +99,16 @@ namespace Smartstore.Core.Checkout.Shipping
 
             if (matchRules)
             {
+                var contextAction = (CartRuleContext context) =>
+                {
+                    if (storeId > 0 && storeId != context.Store.Id)
+                    {
+                        context.Store = _storeContext.GetStoreById(storeId);
+                    }
+                };
+
                 return await shippingMethods
-                    .WhereAwait(async x => await _cartRuleProvider.RuleMatchesAsync(x))
+                    .WhereAwait(async x => await _cartRuleProvider.RuleMatchesAsync(x, contextAction: contextAction))
                     .AsyncToList();
             }
 
@@ -106,7 +117,7 @@ namespace Smartstore.Core.Checkout.Shipping
 
         public virtual async Task<decimal> GetCartItemWeightAsync(OrganizedShoppingCartItem cartItem, bool multiplyByQuantity = true)
         {
-            Guard.NotNull(cartItem, nameof(cartItem));
+            Guard.NotNull(cartItem);
 
             var weight = await GetCartWeight(new[] { cartItem }, multiplyByQuantity, true);
             return weight;
@@ -114,7 +125,7 @@ namespace Smartstore.Core.Checkout.Shipping
 
         public virtual async Task<decimal> GetCartTotalWeightAsync(ShoppingCart cart, bool includeFreeShippingProducts = true)
         {
-            Guard.NotNull(cart, nameof(cart));
+            Guard.NotNull(cart);
 
             var cartWeight = await GetCartWeight(cart.Items, true, includeFreeShippingProducts);
 
@@ -151,9 +162,9 @@ namespace Smartstore.Core.Checkout.Shipping
 
         public virtual async Task<ShippingOptionResponse> GetShippingOptionsAsync(ShippingOptionRequest request, string allowedShippingRateComputationMethodSystemName = null)
         {
-            Guard.NotNull(request, nameof(request));
+            Guard.NotNull(request);
 
-            var computationMethods = LoadActiveShippingRateComputationMethods(request.StoreId)
+            var computationMethods = LoadEnabledShippingProviders(request.StoreId)
                 .Where(x => allowedShippingRateComputationMethodSystemName.IsEmpty() || allowedShippingRateComputationMethodSystemName.EqualsNoCase(x.Metadata.SystemName))
                 .ToList();
 

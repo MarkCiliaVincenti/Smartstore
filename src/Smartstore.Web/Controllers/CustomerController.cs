@@ -98,14 +98,13 @@ namespace Smartstore.Web.Controllers
             _mediaSettings = mediaSettings;
         }
 
-        [RequireSsl]
         public async Task<IActionResult> Info()
         {
             var customer = Services.WorkContext.CurrentCustomer;
 
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var model = new CustomerInfoModel();
@@ -122,7 +121,7 @@ namespace Smartstore.Web.Controllers
 
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             if (model.Email.IsEmpty())
@@ -211,15 +210,7 @@ namespace Smartstore.Web.Controllers
 
                     if (_customerSettings.DateOfBirthEnabled)
                     {
-                        try
-                        {
-                            customer.BirthDate = model.DateOfBirthYear.HasValue && model.DateOfBirthMonth.HasValue && model.DateOfBirthDay.HasValue
-                                ? new DateTime(model.DateOfBirthYear.Value, model.DateOfBirthMonth.Value, model.DateOfBirthDay.Value)
-                                : null;
-                        }
-                        catch
-                        {
-                        }
+                        customer.BirthDate = model.DateOfBirth;
                     }
 
                     if (_customerSettings.CompanyEnabled)
@@ -338,13 +329,12 @@ namespace Smartstore.Web.Controllers
 
         #region Addresses
 
-        [RequireSsl]
         public async Task<IActionResult> Addresses()
         {
             var customer = Services.WorkContext.CurrentCustomer;
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var models = await customer.Addresses
@@ -354,16 +344,17 @@ namespace Smartstore.Web.Controllers
             return View(models);
         }
 
-        [RequireSsl]
         public async Task<IActionResult> AddressDelete(int id)
         {
             if (id < 1)
+            {
                 return NotFound();
+            }
 
             var customer = Services.WorkContext.CurrentCustomer;
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             // Find address and ensure that it belongs to the current customer.
@@ -379,13 +370,12 @@ namespace Smartstore.Web.Controllers
             return RedirectToAction(nameof(Addresses));
         }
 
-        [RequireSsl]
         public async Task<IActionResult> AddressAdd()
         {
             var customer = Services.WorkContext.CurrentCustomer;
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var model = new AddressModel();
@@ -400,7 +390,7 @@ namespace Smartstore.Web.Controllers
             var customer = Services.WorkContext.CurrentCustomer;
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var address = new Address();
@@ -421,7 +411,6 @@ namespace Smartstore.Web.Controllers
             return View(model);
         }
 
-        [RequireSsl]
         public async Task<IActionResult> AddressEdit(int id)
         {
             if (id < 1)
@@ -432,7 +421,7 @@ namespace Smartstore.Web.Controllers
             var customer = Services.WorkContext.CurrentCustomer;
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             // Find address and ensure that it belongs to the current customer.
@@ -454,7 +443,7 @@ namespace Smartstore.Web.Controllers
             var customer = Services.WorkContext.CurrentCustomer;
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             // Find address and ensure that it belongs to the current customer.
@@ -488,14 +477,13 @@ namespace Smartstore.Web.Controllers
 
         #region Orders
 
-        [RequireSsl]
         public async Task<IActionResult> Orders(int? page, int? recurringPaymentsPage)
         {
             var customer = Services.WorkContext.CurrentCustomer;
 
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var ordersPageIndex = Math.Max((page ?? 0) - 1, 0);
@@ -517,7 +505,7 @@ namespace Smartstore.Web.Controllers
 
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             // Get recurring payment identifier.
@@ -542,9 +530,17 @@ namespace Smartstore.Web.Controllers
 
             if (await _orderProcessingService.CanCancelRecurringPaymentAsync(recurringPayment, customer))
             {
-                var errors = await _orderProcessingService.CancelRecurringPaymentAsync(recurringPayment);
                 var model = await PrepareCustomerOrderListModelAsync(customer, 0, 0);
-                model.CancelRecurringPaymentErrors = errors.ToList();
+
+                try
+                {
+                    await _orderProcessingService.CancelRecurringPaymentAsync(recurringPayment);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex);
+                    model.CancelRecurringPaymentErrors.Add(ex.Message);
+                }
 
                 return View(model);
             }
@@ -556,14 +552,13 @@ namespace Smartstore.Web.Controllers
 
         #region Return request
 
-        [RequireSsl]
         public async Task<IActionResult> ReturnRequests()
         {
             var customer = Services.WorkContext.CurrentCustomer;
 
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var model = new CustomerReturnRequestsModel();
@@ -607,14 +602,13 @@ namespace Smartstore.Web.Controllers
 
         #region Downloadable products
 
-        [RequireSsl]
         public async Task<IActionResult> DownloadableProducts()
         {
             var customer = Services.WorkContext.CurrentCustomer;
 
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             var model = new CustomerDownloadableProductsModel();
@@ -661,7 +655,7 @@ namespace Smartstore.Web.Controllers
                         {
                             DownloadId = x.Id,
                             FileVersion = x.FileVersion,
-                            FileName = x.MediaFile.Name,
+                            FileName = x.UseDownloadUrl ? x.DownloadUrl : x.MediaFile.Name,
                             DownloadGuid = x.DownloadGuid,
                             Changelog = x.Changelog
                         })
@@ -722,19 +716,18 @@ namespace Smartstore.Web.Controllers
 
         #region Avatar
 
-        [RequireSsl]
         public async Task<IActionResult> Avatar()
         {
             var customer = Services.WorkContext.CurrentCustomer;
 
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             if (!_customerSettings.AllowCustomersToUploadAvatars)
             {
-                return RedirectToAction("Info");
+                return RedirectToAction(nameof(Info));
             }
 
             var model = new CustomerAvatarEditModel
@@ -821,14 +814,13 @@ namespace Smartstore.Web.Controllers
 
         #region Reward points
 
-        [RequireSsl]
         public IActionResult RewardPoints()
         {
             var customer = Services.WorkContext.CurrentCustomer;
 
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             if (!_rewardPointsSettings.Enabled)
@@ -950,8 +942,6 @@ namespace Smartstore.Web.Controllers
 
             if (!excludeProperties)
             {
-                var dateOfBirth = customer.BirthDate;
-
                 var newsletterSubscription = await _db.NewsletterSubscriptions
                     .AsNoTracking()
                     .ApplyMailAddressFilter(customer.Email, Services.StoreContext.CurrentStore.Id)
@@ -965,14 +955,7 @@ namespace Smartstore.Web.Controllers
                 model.CustomerNumber = customer.CustomerNumber;
                 model.Email = customer.Email;
                 model.Username = customer.Username;
-
-                if (dateOfBirth.HasValue)
-                {
-                    model.DateOfBirthDay = dateOfBirth.Value.Day;
-                    model.DateOfBirthMonth = dateOfBirth.Value.Month;
-                    model.DateOfBirthYear = dateOfBirth.Value.Year;
-                }
-
+                model.DateOfBirth = customer.BirthDate;
                 model.VatNumber = customer.GenericAttributes.VatNumber;
                 model.StreetAddress = customer.GenericAttributes.StreetAddress;
                 model.StreetAddress2 = customer.GenericAttributes.StreetAddress2;

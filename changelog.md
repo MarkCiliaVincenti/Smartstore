@@ -4,12 +4,247 @@
 
 ### New Features
 
+- **Botsonic** plugin (commercial)
+- The recycle bin for products enables to restore and permanently delete products.
+- #745 Page Builder: depend story visibility on user roles.
+- Added option to configure allowed characters for user names 
+- #836 Added option to define additional lines for robots.txt
+
+### Theming
+
+- Infrastructure
+  - Forked & customized **Bootstrap** framework. Our implementation combines version 4.6 and 5.x. We have not made any modifications to the JavaScript files; only SCSS has been customized. The primary objective is to maintain compatibility with the original Bootstrap documentation for developer convenience.
+  - Logical CSS for better RTL support
+  - Added subtle and emphasis colors to the color system
+  - Revamped button styling
+  - Revamped dropdown styling
+  - Revamped select2 styling
+  - Revamped pagination styling
+  - Revamped modal window styling
+  - Badges: new variants and modifiers `.badge-subtle`, `.badge-outline-*`, `.badge-ring`, `.badge-counter`
+  - Revamped check & radio styling: new variants and modifiers `.form-check-solo`, `.form-check-{color}`, `.form-switch`, `.form-switch-lg`
+  - Many improvements to input groups, button groups and collapsibles
+  - Sass variables for all easings, contained in `_easings.scss`
+  - Dropped responsive (rfs) spacing
+- Frontend
+  - New grid breakpoint **xxl** (1400px)
+  - Made components *rounder* by slightly increasing border-radius variables
+  - Revamped product listing action bar styling (sorting, view mode, pagination)
+  - On screens < md, the offcanvas window for product filter slides in from bottom and also provides the sorting options
+  - Revamped offcanvas main menu
+  - Revamped image gallery styling
+  - Fixed Slick slider dotted navigation responsiveness issues
+  - Slightly improved InstantSearch box
+  - Revamped product tags component
+  - Dropdown product quantity input (automatically rendered instead of spinner if possible quantities do not exceed 100).
+  - Revamped checkout progress indicator
+  - Revamped scroll-to-top button
+  - Revamped cookie consent dialog styling
+  - Dropped *Triple Date Picker* component in favour of browser native date picker
+  - Unstyled links are underlined by default
+  - New MyAccount menu header with avatar image, customer name and email address 
+- Backend
+  - New colorpicker component with swatches
+  - Revamped number input styling
+  - Locale editor tab navigation has been redesigned and is now more responsive
+
 ### Improvements
+
+- Increased performance:
+  - Added hash codes to attribute combinations. With a large number of attribute combinations, variants are found much faster now.
+  - Fixed slow loading of product categories for a large number of categories. Price calculation and product export were affected.
+  - MediaSearcher always performed a LIKE search for terms (the equals operator was missing)
+- Improved plugin & provider manager UI
+- Use billing address if there is no shipping address and tax calculation is based on shipping address.
+- #580 Added caching for live currency exchange rates.
+- #767 Handle tier prices in depending prices module.
+- #378 Remove the assignments of products to a tax category when the tax category is deleted.
+- Blog: added counter for pageviews.
+- Product tags:
+  - #388 Ajaxify product tag selection in backend.
+  - Added search panel to product tags grid.
+- Web API:
+  - #142 Take back in stock notifications into account.
+  - #805 Add endpoints to assign discounts to entities.
+- Import:
+  - #390 Add a setting for whether to send the completion email.
+  - #377 Import cross- and checkout-selling products.
+- #503 Don't round quantity unit amount for PAnGV.
+- #403 Added preview image link of NewsItem to RSS feed.
+- #276 Enable to set the time of day for start and end date of discounts.
+- #486 Add setting to capture payment when order status changes to *complete*.
+- #782 Make the total weight of a shipment editable.
+- #782 Enable to mark shipments of an order as *shipped* or *delivered* via orders grid.
+- Added ability to edit delivery time in product grid
+- #807 Enable absolute Paths for DataExchangeSettings.ImageImportFolder.
+- #786 Replace TripleDatePicker with native input type date.
+- #804 Implemented the new TrustBadge integration mode, including new settings for positioning, color scheme, etc. 
+- #819 Fix zoom on product detail page when there is a large right column.
+- PayPal credit card: Removed address fields and integrated Strong Customer Authentication (SCA) instead.
 
 ### Bugfixes
 
+- Price calculation:
+  - Rounding differences between the subtotal and the sum of the line totals.
+  - Manufacturer discount is ignored as soon as an attribute with a linked product is selected.
+- Product lists:
+  - Fixed do not show tax info in product lists if the product is tax exempt.
+  - Fixed call for price note not displayed in product lists.
+- MegaSearch:
+  - Fixed incorrect search results when a multistore has different default languages configured.
+  - Fixed an incorrect second search result, executed via a spell checker suggestion, when the first search did not return any hits.
+  - Fixed discounts assigned to categories and limited to customer roles should be excluded from indexing and indexed prices.
+- Fixed the category navigation no longer shows the number of contained products after reindexing.
+- Fixed products associated to a grouped product cannot be deleted via associated products grid.
+- Fixed not yet awarded reward points were reduced when an order was deleted.
+- Checkout attributes:
+  - Fixed wrong tax was applied to checkout attributes in checkout.
+  - Fixed checkout attributes that are not active anymore should not be applied.
+- Web API: 
+  - Fixed 404 file swagger.json not found when opening Swagger documentation in a virtual directory.
+  - #815 Import of customers via WebApi/OData sets PasswordFormat to 'clear'.
+- Fixed a scripting issue where the input focus of the direct debit payment form was mistakenly set to a wrong input element.
+- Fixed missing cache clearing after importing localized properties.
+- Output Cache: missing `Content-Type` header when serving page from cache
+- #531 Error reading import file with localized values of languages with the same UniqueSeoCode.
+- Fixed discounts assigned to categories and limited to customer roles should be excluded from export and exported prices.
+- Import:
+  - Fixed localized properties were not updated during import.
+  - Localized SeName was only updated when import file also contained a non-localized SeName column.
+- Fixed MainPictureId not applied on product edit page if missing and if there is only one picture assigned to a product.
+- Fixed product image gallery issue where no image was displayed at all.
+- #843 Additional shipping charge displayed in product details even if free shipping is activated.
+- Fixed "The requested service 'Other (Smartstore.Core.Rules.IRuleProvider)' has not been registered" when creating a rule.
+- Fixed #792 Downloaded language sometimes cannot be deleted when using SQLite.
+- Stripe: Fixed incorrect system name in several places.
+- Gift cards were not generated according to the order item quantity during order processing.
+- Fixed incorrect cart validation if minimum cart quantity and quantity step were configured for a product.
+- #810 Doubleclicking login button can lead to 400 BadRequest error page.
+- Fixed arithmetic overflow SqlException in `ShippingByWeight` and `ShippingByTotal` four decimal places migrations.
+- #776 PayPal credit card payment fails due to missing session PayPalOrderId entry.
+- #797 Incorrect validation when product can be added to the cart in single positions.
+- Manufacturer pictures were not displayed on product detail pages.
+- #828 Queued email identifier is 0 for order completed email.
+- #873 Category preview may show 404 page if the category is limited to a certain store.
+- Do not fallback to "Product is not available" delivery info on product detail page if the product is available.
+- #839 Output cache must be invalidated when menu items are added or edited 
+
+
+
+## Smartstore 5.0.5
+
+### Breaking Changes
+
+- `Store.SecureUrl` and `Store.ForceSslForAllPages` are deprecated now. By default, all pages are secured if `Store.SslEnabled` is true.
+- Reindexing of MegaSearch search index required to include new category tree path.
+
+### New Features
+
+- **PersonalPromo** plugin (commercial)
+- **Wallet** plugin (commercial)
+- #251 MegaSearch: New option, when enabled, search hits must contain all search terms (logical AND operation). The more terms you enter, the fewer hits will be returned.
+- Reverse proxy configuration using `ForwardedHeadersMiddleware`
+- SqliteDataProvider: 
+  - Fixed case-insensitive `Contains()` and `Like()` failing on non-ascii characters.
+  - Implemented BackupRestore feature
+- Web API:
+  - #618 added an endpoint for adding a product to the shopping cart.
+  - #709 added an endpoint that returns order data prepared for an invoice (including variant SKU).
+  - #717 added `GiftCard`, `GiftCardUsageHistory`, `DiscountUsageHistory`, `CheckoutAttribute` and `CheckoutAttributeValue`.
+  - #723 store the SKU of the ordered product variant at the `OrderItem` entity.
+- Payment method brand icons can be displayed on product detail pages
+- Added settings for more social links (Flickr, LinkedIn, Xing, TikTok, Snapchat, Vimeo, Tumblr, Ello, Behance) to be displayed in the footer.
+- SEO: trailing slash options for internal links (*Append trailing slash to links*, *Trailing slash mismatch rule*)
+- #480 Product export: add a filter for categories and an option to include all sub-categories.
+- #437 Rule builder: add cart rule for delivery time.
+- #559 Forum: add setting to prevent registered customers from posting forum topics and posts.
+
+### Improvements
+
+- Theming
+  - Better usability of the backend on small mobile devices (especially DataGrid)
+  - Updated FontAwesome library from version 6.0.0 to version 6.4.0
+  - Checkout / Payment page can display payment method brand icons
+- Increased performance: category tree path to filter products by categories.
+- DataGrid now remembers the search filter state across requests
+- Better PayPal implementation: added providers for every single payment option.
+- New user agent parser with much better bot, mobile/tablet detection (but less accurate platform and device detection)
+- #416 Make the language name localizable.
+- Specify custom database collation during installation.
+- Added a search filter for country grid.
+- Add X-Frame-Options `SAMEORIGIN` to response headers
+- Use `308 - Permanent redirect` status code for HTTPS redirection (instead of `301 - Moved permanently`)
+- (DEV) Model mapping (`IMapper<TFrom, TTo>`):
+  - Composite mappers: multiple mappers for a single type pair
+  - Named mappers
+  - Mapper lifetimes (transient, scoped, singleton)
+- Search
+  - Search box UI improvements
+  - #441 Enable multistore configuration for SearchSettings.SearchFields.
+- #658 Limit number of product clones to generate either via UI or code (or both)
+- #736 Backend > Product grid: Search By SKU should also search for GTIN & MPN
+- #682 Allow to set the default email account per shop.
+- Google Analytics: Added option to enable admin to prohibit the script from being loaded without explicit consent by the visitor
+- #406 Exclude current product from recently viewed products block on product detail page.
+- Added setting to automatically display CookieManager if the shop visitor is from the EU.
+
+### Bugfixes
+
+- App restart/recycle could occasionally leak or fail
 - PdfConverter failed after cron job cleaned up temporary files in App_Data directory
+- Link from Admin area to a named area-less frontend route did not properly prepend culture code
+- Identity:
+  - Fixed *checkout loop* after logout.
+  - #753 During registration a new customer is created although the password is invalid.
+- Export:
+  - `IWorkContext` CurrentCustomer, WorkingLanguage and WorkingCurrency must be set according to projection.
+  - Price calculation must respect `TaxSettings` of projected store.
+  - Fixed wrong exported price when attribute combinations exported as products and price display type is set to lowest price.
+  - When creating a profile, the public folder name of another profile should not be copied, but a unique, new folder name should be used.
+- Fixed picture and color control were not displayed when editing a product attribute option.
 - Fixed display of orders in MyAccount area when `OrderSettings.DisplayOrdersOfAllStores` was set to `true`
+- Fixed RTL theme Sass parsing error
+- When an order was placed, the stock quantity of attribute combinations were not updated if the stock is managed by attributes.
+- Fixed "also purchased products" should not display unpublished products.
+- #651 Fixed product can be added to cart even if the availability limit was reached.
+- #748 The "Recently viewed products" section displays items in stores to which it has not been assigned.
+- Logout was not possible after new customer registrations.
+- Fixed unpublished products should be assignable as "promoted" to a product.
+- `SequentialDataReader`: fixed a problem where occasionally nullable string fields were not read
+- UrlRewriter: raw rules were not loaded from legacy storage
+- #731 Entering invalid URL as menu item url results in unrecoverable error.
+- Fixed a topic was not editable if a menu link with an invalid target was associated.
+- `MainMenuShrinker` was missing.
+- Added missing properties in customer grid.
+- Fixed popular product tags were not loaded based on the frequency of their product assignments on homepage.
+- Fixed after a login the user was not redirected to the previous page.
+- Fixed problem where bundles couldn't be added to the basket if bundleitems had attributes.
+- GMC: when there was no Google category defined in a product, copying the product threw `NullReferenceException`.
+- Fixed attribute filters of bundle items were not loaded in bundle item dialog.
+- GoogleAnalytics:
+  - Fixed a `NullReferenceException` in `GoogleAnalyticsViewComponent`.
+  - Fixed `KeyNotFoundException` in `GoogleAnalyticsScriptHelper.GetOrderCompletedScriptAsync`.
+- Fixed incorrect order of product attributes on the shopping cart page.
+- Fixed #687 Product `MainPictureId` changed each time a new picture is uploaded.
+- Fixed ArgumentNullException in `FixProductMainPictureId` when uploading new image on product edit page.
+- Fixed links to assigned shipping methods were not displayed when editing a rule.
+- Fixed SearchLog did not show top search terms in instant search.
+- Fixed redirect to login page instead of an error message when a guest wants to checkout and anonymous checkout is not allowed.
+- Fixed the category number in category navigation was not displayed when the catalog setting `ShowCategoryProductNumberIncludingSubcategories` was changed.
+- #681 For a message template, the assignment to the e-mail account is not removed when the e-mail account is deleted.
+- #704 Cart page displays outdated discount information when applying or removing a discount coupon code.
+- #751 Summernote: Inserting a table places it at the top of the HTML editor
+- Fixed rare bug where shipping rates wouldn't be applied due to rounding issues
+- ShippingByWeight: fixed missing `SmallQuantityThreshold` in initial migration.
+- #619 Shipping by weight and by total should use 4 instead of 2 decimal places for currency values.
+- For a BundleItem with attribute filters, the attribute selection on the product detail page disappeared as soon as an attribute was selected.
+- #724 Selecting other languages resets selected sorting/items per page setting 
+- Legacy widget zones weren't considered anymore
+- DevTools: Some widget zones weren't displayed due to incorrect RegEx
+- NumberInput: Min Max should be handled by validation framework or in frontend by native HTML elements.
+- Fixed RuntimeBinderException in SettingController when no search fields are saved.
+- Fixed rule assigned to payment method only applied after clearing the cache.
+- Admin dashboard: fixed percentage value for last 28 days in order and customer registrations statistics.
 
 ## Smartstore 5.0.4
 

@@ -5,7 +5,9 @@ using Moq;
 using NUnit.Framework;
 using Smartstore.Caching;
 using Smartstore.Core.Checkout.Payment;
+using Smartstore.Core.Stores;
 using Smartstore.Engine;
+using Smartstore.Engine.Modularity;
 using Smartstore.Test.Common;
 
 namespace Smartstore.Core.Tests.Checkout.Payment
@@ -17,6 +19,7 @@ namespace Smartstore.Core.Tests.Checkout.Payment
         PaymentSettings _paymentSettings;
         ITypeScanner _typeScanner;
         IRequestCache _requestCache;
+        IStoreContext _storeContext;
 
         [OneTimeSetUp]
         public new void SetUp()
@@ -28,26 +31,39 @@ namespace Smartstore.Core.Tests.Checkout.Payment
 
             _paymentSettings.ActivePaymentMethodSystemNames.Add("Payments.TestMethod1");
 
+            var storeContextMock = new Mock<IStoreContext>();
+            _storeContext = storeContextMock.Object;
+
             var typeScannerMock = new Mock<ITypeScanner>();
             _typeScanner = typeScannerMock.Object;
 
             var requestCacheMock = new Mock<IRequestCache>();
             _requestCache = requestCacheMock.Object;
 
-            _paymentService = new PaymentService(null, null, _paymentSettings, null, ProviderManager, _requestCache, _typeScanner);
+            _paymentService = new PaymentService(
+                DbContext, 
+                _storeContext, 
+                null, 
+                _paymentSettings, 
+                null, 
+                ProviderManager,
+                NullCache.Instance,
+                _requestCache, 
+                _typeScanner, 
+                new NullModuleContraint());
         }
 
         [Test]
         public async Task Can_load_paymentMethod_by_systemKeyword()
         {
-            var srcm = await _paymentService.LoadPaymentMethodBySystemNameAsync("Payments.TestMethod1");
+            var srcm = await _paymentService.LoadPaymentProviderBySystemNameAsync("Payments.TestMethod1");
             srcm.ShouldNotBeNull();
         }
 
         [Test]
         public async Task Can_load_active_paymentMethods()
         {
-            var srcm = await _paymentService.LoadActivePaymentMethodsAsync();
+            var srcm = await _paymentService.LoadActivePaymentProvidersAsync();
             srcm.ShouldNotBeNull();
             srcm.Any().ShouldBeTrue();
         }

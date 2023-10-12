@@ -34,27 +34,11 @@ namespace Smartstore.Web.Rendering.Choices
         /// Selected value for textboxes
         /// </summary>
         public string TextValue { get; set; }
-        /// <summary>
-        /// Selected day value for datepicker
-        /// </summary>
-        public int? SelectedDay { get; set; }
-        /// <summary>
-        /// Selected month value for datepicker
-        /// </summary>
-        public int? SelectedMonth { get; set; }
-        /// <summary>
-        /// Selected year value for datepicker
-        /// </summary>
-        public int? SelectedYear { get; set; }
-        /// <summary>
-        /// Begin year for datepicker
-        /// </summary>
-        public int? BeginYear { get; set; }
-        /// <summary>
-        /// End year for datepicker
-        /// </summary>
-        public int? EndYear { get; set; }
 
+        /// <summary>
+        /// Selected date value for datepicker
+        /// </summary>
+        public DateTime? SelectedDate { get; set; }
         public string UploadedFileGuid { get; set; }
         public string UploadedFileName { get; set; }
 

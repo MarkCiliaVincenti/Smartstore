@@ -263,14 +263,12 @@ namespace Smartstore.Admin.Models.Catalog
         public int NumberOfAvailableCategories { get; set; }
         public int NumberOfAvailableManufacturers { get; set; }
         public int NumberOfAvailableProductAttributes { get; set; }
-        public bool HasOrders { get; set; }
 
         //Pictures.
         [LocalizedDisplay("*HasPreviewPicture")]
         public bool HasPreviewPicture { get; set; }
         public ProductPictureModel AddPictureModel { get; set; } = new();
         public List<ProductMediaFile> ProductMediaFiles { get; set; } = new();
-
 
         [UIHint("Discounts")]
         [AdditionalMetadata("multiple", true)]
@@ -292,10 +290,6 @@ namespace Smartstore.Admin.Models.Catalog
 
         [LocalizedDisplay("*BasePriceBaseAmount")]
         public int? BasePriceBaseAmount { get; set; }
-
-        [UIHint("DeliveryTimes")]
-        [LocalizedDisplay("*DeliveryTime")]
-        public int? DeliveryTimeId { get; set; }
 
         [LocalizedDisplay("*QuantityUnit")]
         public int? QuantityUnitId { get; set; }
@@ -417,6 +411,7 @@ namespace Smartstore.Admin.Models.Catalog
             [LocalizedDisplay("Admin.Catalog.Products.Fields.ProductType")]
             public string ProductTypeName { get; set; }
             public string ProductTypeLabelHint { get; set; }
+            public string ProductEditUrl { get; set; }
 
             [LocalizedDisplay("Admin.Catalog.Products.Fields.Sku")]
             public string Sku { get; set; }
@@ -731,6 +726,7 @@ namespace Smartstore.Admin.Models.Catalog
         }
     }
 
+    [Mapper(Lifetime = ServiceLifetime.Singleton)]
     public class ProductMapper : IMapper<Product, ProductModel>
     {
         public async Task MapAsync(Product from, ProductModel to, dynamic parameters = null)

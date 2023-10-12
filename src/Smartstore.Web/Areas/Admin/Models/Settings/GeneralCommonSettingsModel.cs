@@ -11,6 +11,7 @@ namespace Smartstore.Admin.Models
     {
         public StoreInformationSettingsModel StoreInformationSettings { get; set; } = new();
         public DateTimeSettingsModel DateTimeSettings { get; set; } = new();
+        public EmailAccountSettingsModel EmailAccountSettings { get; set; } = new();
 
         [AdditionalMetadata("MetaTitleResKey", "Admin.Configuration.Settings.GeneralCommon.DefaultTitle")]
         [AdditionalMetadata("MetaDescriptionResKey", "Admin.Configuration.Settings.GeneralCommon.DefaultMetaDescription")]
@@ -33,6 +34,7 @@ namespace Smartstore.Admin.Models
         public SocialSettingsModel SocialSettings { get; set; } = new();
 
         #region Nested classes
+
         public partial class HomepageSettingsModel : ISeoModel
         {
             public string MetaTitle { get; set; }
@@ -62,6 +64,13 @@ namespace Smartstore.Admin.Models
 
             [LocalizedDisplay("*DefaultStoreTimeZone")]
             public string DefaultStoreTimeZoneId { get; set; }
+        }
+
+        [LocalizedDisplay("Admin.Configuration.Settings.EmailAccount.")]
+        public partial class EmailAccountSettingsModel
+        {
+            [LocalizedDisplay("*DefaultEmailAccountId")]
+            public int DefaultEmailAccountId { get; set; }
         }
 
         [LocalizedDisplay("Admin.Configuration.Settings.GeneralCommon.")]
@@ -104,6 +113,12 @@ namespace Smartstore.Admin.Models
             [LocalizedDisplay("*CanonicalHostNameRule")]
             public CanonicalHostNameRule CanonicalHostNameRule { get; set; }
 
+            [LocalizedDisplay("*AppendTrailingSlashToUrls")]
+            public bool AppendTrailingSlashToUrls { get; set; }
+
+            [LocalizedDisplay("*TrailingSlashRule")]
+            public TrailingSlashRule TrailingSlashRule { get; set; }
+
             [LocalizedDisplay("*ExtraRobotsDisallows")]
             [UIHint("Textarea")]
             [AdditionalMetadata("rows", 10)]
@@ -113,6 +128,11 @@ namespace Smartstore.Admin.Models
             [UIHint("Textarea")]
             [AdditionalMetadata("rows", 10)]
             public string ExtraRobotsAllows { get; set; }
+
+            [LocalizedDisplay("*ExtraRobotsLines")]
+            [UIHint("Textarea")]
+            [AdditionalMetadata("rows", 10)]
+            public string ExtraRobotsLines { get; set; }
 
             [LocalizedDisplay("*XmlSitemapEnabled")]
             public bool XmlSitemapEnabled { get; set; }
@@ -360,20 +380,47 @@ namespace Smartstore.Admin.Models
             [LocalizedDisplay("*ShowSocialLinksInFooter")]
             public bool ShowSocialLinksInFooter { get; set; }
 
-            [LocalizedDisplay("*FacebookLink")]
+            [LocalizedDisplay("*FacebookLink", "*LeaveEmpty")]
             public string FacebookLink { get; set; }
 
-            [LocalizedDisplay("*TwitterLink")]
+            [LocalizedDisplay("*TwitterLink", "*LeaveEmpty")]
             public string TwitterLink { get; set; }
 
-            [LocalizedDisplay("*PinterestLink")]
+            [LocalizedDisplay("*PinterestLink", "*LeaveEmpty")]
             public string PinterestLink { get; set; }
 
-            [LocalizedDisplay("*YoutubeLink")]
+            [LocalizedDisplay("*YoutubeLink", "*LeaveEmpty")]
             public string YoutubeLink { get; set; }
 
-            [LocalizedDisplay("*InstagramLink")]
+            [LocalizedDisplay("*InstagramLink", "*LeaveEmpty")]
             public string InstagramLink { get; set; }
+
+            [LocalizedDisplay("*FlickrLink", "*LeaveEmpty")]
+            public string FlickrLink { get; set; }
+
+            [LocalizedDisplay("*LinkedInLink", "*LeaveEmpty")]
+            public string LinkedInLink { get; set; }
+
+            [LocalizedDisplay("*XingLink", "*LeaveEmpty")]
+            public string XingLink { get; set; }
+
+            [LocalizedDisplay("*TikTokLink", "*LeaveEmpty")]
+            public string TikTokLink { get; set; }
+
+            [LocalizedDisplay("*SnapchatLink", "*LeaveEmpty")]
+            public string SnapchatLink { get; set; }
+
+            [LocalizedDisplay("*VimeoLink", "*LeaveEmpty")]
+            public string VimeoLink { get; set; }
+
+            [LocalizedDisplay("*TumblrLink", "*LeaveEmpty")]
+            public string TumblrLink { get; set; }
+
+            [LocalizedDisplay("*ElloLink", "*LeaveEmpty")]
+            public string ElloLink { get; set; }
+
+            [LocalizedDisplay("*BehanceLink", "*LeaveEmpty")]
+            public string BehanceLink { get; set; }
         }
 
         #endregion
@@ -403,17 +450,6 @@ namespace Smartstore.Admin.Models
                 .NotEmpty()
                 .When(x => x.Enabled)
                 .WithMessage(T("Admin.Configuration.Settings.GeneralCommon.CaptchaEnabledNoKeys"));
-        }
-    }
-
-    public partial class SocialSettingsValidator : SettingModelValidator<GeneralCommonSettingsModel.SocialSettingsModel, SocialSettings>
-    {
-        public SocialSettingsValidator(Localizer T)
-        {
-            RuleFor(x => x.TwitterSite)
-                .Must(x => x.StartsWith("@"))
-                .Unless(x => !x.TwitterSite.HasValue())
-                .WithMessage(T("Admin.Configuration.Settings.GeneralCommon.SocialSettings.TwitterSite.Error"));
         }
     }
 }

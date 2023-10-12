@@ -140,8 +140,8 @@ namespace Smartstore.Web.Infrastructure.Hooks
         /// {0} : current product id
         /// {1} : current store id
         /// </remarks>
-        public const string PRODUCTS_ALSO_PURCHASED_IDS_KEY = "pres:alsopuchased-{0}-{1}";
-        public const string PRODUCTS_ALSO_PURCHASED_IDS_PATTERN_KEY = "pres:alsopuchased*";
+        public const string PRODUCTS_ALSO_PURCHASED_IDS_KEY = "pres:alsopurchased-{0}-{1}";
+        public const string PRODUCTS_ALSO_PURCHASED_IDS_PATTERN_KEY = "pres:alsopurchased*";
 
         /// <summary>
         /// Key for states by country id
@@ -158,9 +158,10 @@ namespace Smartstore.Web.Infrastructure.Hooks
         /// Key for available languages
         /// </summary>
         /// <remarks>
-        /// {0} : current store ID
+        /// {0} : language ID
+        /// {1} : current store ID
         /// </remarks>
-        public const string AVAILABLE_LANGUAGES_MODEL_KEY = "pres:languages:all-{0}";
+        public const string AVAILABLE_LANGUAGES_MODEL_KEY = "pres:languages:all-{0}-{1}";
         public const string AVAILABLE_LANGUAGES_PATTERN_KEY = "pres:languages:*";
 
         /// <summary>
@@ -186,9 +187,9 @@ namespace Smartstore.Web.Infrastructure.Hooks
         /// Key for shop logo
         /// </summary>
         /// <remarks>
-        /// {0} : current store ID
+        /// {0} : current store ID, {1} = Url scheme
         /// </remarks>
-        public const string STORE_LOGO_MODEL_KEY = "pres:logo-{0}";
+        public const string STORE_LOGO_MODEL_KEY = "pres:logo-{0}-{1}";
         public const string STORE_LOGO_PATTERN_KEY = "pres:logo*";
 
         #endregion

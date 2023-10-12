@@ -8,7 +8,8 @@
           allow-resize="true"
           allow-row-selection="true"
           allow-edit="false"
-          max-height="500px">
+          max-height="500px"
+          onrowclass="crossSellProducts_onRowClass">
     <datasource read="@Url.Action("CrossSellProductList", new { productId = parentModel.Id })"
                 delete="@Url.Action("CrossSellProductDelete")" />
     <paging position="Bottom" page-index="1" show-size-chooser="false" />
@@ -32,7 +33,7 @@
         <zone name="datagrid_toolbar_omega"></zone>
         <toolbar-group>
             <button datagrid-action="DataGridToolAction.DeleteSelectedRows" type="button" class="btn btn-danger no-anims btn-flat">
-                <i class="far fa-trash-alt"></i>
+                <i class="far fa-trash-can"></i>
                 <span>@T("Admin.Common.Delete.Selected")</span>
             </button>
         </toolbar-group>
@@ -54,7 +55,7 @@
 <entity-picker icon-css-class="fa fa-plus"
                caption='@T("Admin.Common.Search")'
                dialog-title='@T("Admin.Catalog.Products.CrossSells.AddNew")'
-               onselectioncompleted="PickCrossSellProducts_Completed"
+               onselectioncompleted="pickCrossSellProducts_Completed"
                class="crosssell-product-picker"
                style="display:none" />
 
@@ -70,13 +71,13 @@
         $(document).on("click", "#btnCreateMutuallyCrossSellProducts", function () {
             $(this).ajax({
                 success: function (resp) {
-                    alert(resp.Message);
+                    alert2(resp.Message);
                 }
             });
         });
     });
 
-    function PickCrossSellProducts_Completed(ids) {
+    function pickCrossSellProducts_Completed(ids) {
         $({}).ajax({
             url: '@Url.Action("CrossSellProductAdd")',
             data: {
@@ -89,4 +90,10 @@
         });
         return true;
     };
+
+    function crossSellProducts_onRowClass(row) {
+        if (!row.Product2Published) {
+            return { 'text-muted': true };
+        }
+    }
 </script>

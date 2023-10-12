@@ -39,12 +39,10 @@ namespace Smartstore.PayPal.Controllers
         {
             var model = MiniMapper.Map<PayPalSettings, ConfigurationModel>(settings);
 
-            model.EnabledFundings = settings.EnabledFundings.SplitSafe(',').ToArray();
-            model.DisabledFundings = settings.DisabledFundings.SplitSafe(',').ToArray();
             model.WebhookUrl = Url.Action(nameof(PayPalController.WebhookHandler), "PayPal", new { area = string.Empty }, "https");
 
             ViewBag.PrimaryStoreCurrencyCode = Services.CurrencyService.PrimaryCurrency.CurrencyCode;
-            ViewBag.Provider = _providerManager.GetProvider("Payments.PayPalStandard").Metadata;
+            ViewBag.Provider = _providerManager.GetProvider(PayPalConstants.Standard).Metadata;
 
             if (settings.ClientId.HasValue() && settings.Secret.HasValue())
             {
@@ -55,6 +53,17 @@ namespace Smartstore.PayPal.Controllers
             {
                 model.WebHookCreated = true;
             }
+
+            // Convert FundingOptions from settings to Array<int> so the corresponding taghelper in configure view can work with it.
+            model.FundingsCart = settings.FundingsCart
+                .SplitSafe(",")
+                .Select(x => ((int)x.Convert<FundingOptions>()).ToString())
+                .ToArray();
+
+            model.FundingsOffCanvasCart = settings.FundingsOffCanvasCart
+                .SplitSafe(",")
+                .Select(x => ((int)x.Convert<FundingOptions>()).ToString())
+                .ToArray();
 
             model.DisplayOnboarding = !settings.ClientId.HasValue() && !settings.Secret.HasValue();
 
@@ -83,10 +92,14 @@ namespace Smartstore.PayPal.Controllers
             ModelState.Clear();
             MiniMapper.Map(model, settings);
 
-            // TODO: (mh) (core) Check if this is must be implmented some oth way.
-            string.Join(',', model.EnabledFundings ?? Array.Empty<string>());
-            string.Join(',', model.DisabledFundings ?? Array.Empty<string>());
+            // Convert FundingOptions for cart & OffCanvasCart to comma separated string.
+            var fundingsCart = model.FundingsCart?.Select(x => x.Convert<FundingOptions>().ToString()) ?? Array.Empty<string>();
+            var fundingsOffCanvasCart = model.FundingsOffCanvasCart?.Select(x => x.Convert<FundingOptions>().ToString()) ?? Array.Empty<string>();
 
+            settings.FundingsCart = string.Join(',', fundingsCart);
+            settings.FundingsOffCanvasCart = string.Join(',', fundingsOffCanvasCart);
+
+            // Localization
             foreach (var localized in model.Locales)
             {
                 await _localizedEntityService.ApplyLocalizedSettingAsync(settings, x => x.CustomerServiceInstructions, localized.CustomerServiceInstructions, localized.LanguageId, storeId);
@@ -129,7 +142,7 @@ namespace Smartstore.PayPal.Controllers
             {
                 try
                 {
-                    var getMerchantStatusRequest = new GetMerchantStatusRequest(PartnerId, settings.PayerId);
+                    var getMerchantStatusRequest = new GetMerchantStatusRequest(PayPalConstants.PartnerId, settings.PayerId);
                     var getMerchantStatusResponse = await _client.ExecuteRequestAsync(getMerchantStatusRequest);
                     var merchantStatus = getMerchantStatusResponse.Body<MerchantStatus>();
 
@@ -180,7 +193,7 @@ namespace Smartstore.PayPal.Controllers
                 if (accessTokenResponse.Status == HttpStatusCode.OK)
                 {
                     var accesstoken = accessTokenResponse.Body<AccessToken>();
-                    var credentialsRequest = new GetSellerCredentialsRequest(PartnerId, accesstoken.Token);
+                    var credentialsRequest = new GetSellerCredentialsRequest(PayPalConstants.PartnerId, accesstoken.Token);
                     var credentialsResponse = await _client.ExecuteRequestAsync(credentialsRequest);
 
                     if (credentialsResponse.Status == HttpStatusCode.OK)
@@ -237,7 +250,7 @@ namespace Smartstore.PayPal.Controllers
                 var storeScope = GetActiveStoreScopeConfiguration();
                 var settings = await Services.SettingFactory.LoadSettingsAsync<PayPalSettings>(storeScope);
 
-                var getMerchantStatusRequest = new GetMerchantStatusRequest(PartnerId, settings.PayerId);
+                var getMerchantStatusRequest = new GetMerchantStatusRequest(PayPalConstants.PartnerId, settings.PayerId);
                 var getMerchantStatusResponse = await _client.ExecuteRequestAsync(getMerchantStatusRequest);
                 var merchantStatus = getMerchantStatusResponse.Body<MerchantStatus>();
 
@@ -269,8 +282,7 @@ namespace Smartstore.PayPal.Controllers
             // Get store URL
             var storeScope = GetActiveStoreScopeConfiguration();
             var store = storeScope == 0 ? Services.StoreContext.CurrentStore : Services.StoreContext.GetStoreById(storeScope);
-
-            var storeUrl = store.GetHost(true).EnsureEndsWith('/');
+            var storeUrl = store.GetBaseUrl();
 
             if (webhooks.Hooks.Length < 1 || !webhooks.Hooks.Any(x => x.Url.ContainsNoCase(storeUrl)))
             {
@@ -279,7 +291,7 @@ namespace Smartstore.PayPal.Controllers
                 {
                     EventTypes = new EventType[]
                     {
-                        new EventType { Name = "*" }
+                        new() { Name = "*" }
                     },
                     Url = storeUrl + "paypal/webhookhandler"
                 };

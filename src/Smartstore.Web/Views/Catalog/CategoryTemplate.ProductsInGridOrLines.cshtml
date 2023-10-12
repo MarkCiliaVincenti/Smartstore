@@ -49,13 +49,13 @@
 
 <widget target-zone="left">
     <menu name="Main" template="Categories"></menu>
-    <partial name="Search.Filters" model="Model.SearchResult" />
+    <partial name="Search.Filters" model="Model.Products" />
 </widget>
 
 <div class="page category-page">
     <div class="page-title">
         <h1 sm-language-attributes-for="categoryName" class="h3">
-            @categoryName
+            @Html.Raw(categoryName)
         </h1>
         @if (Model.SearchResult.TotalHitsCount > 0)
         {

@@ -3,11 +3,11 @@ using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Catalog.Pricing;
 using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Common;
+using Smartstore.Core.Content.Media;
 using Smartstore.Core.Content.Media.Imaging;
 using Smartstore.Core.DataExchange.Export.Events;
 using Smartstore.Core.DataExchange.Export.Internal;
 using Smartstore.Core.Seo;
-using Smartstore.Core.Stores;
 using Smartstore.Utilities;
 using Smartstore.Utilities.Html;
 
@@ -28,7 +28,7 @@ namespace Smartstore.Core.DataExchange.Export
             {
                 SeName = seName,
                 Combinations = await ctx.ProductBatchContext.AttributeCombinations.GetOrLoadAsync(product.Id),
-                AbsoluteProductUrl = await _productUrlHelper.GetAbsoluteProductUrlAsync(product.Id, seName, null, ctx.Store, ctx.ContextLanguage)
+                AbsoluteProductUrl = await _productUrlHelper.GetAbsoluteProductUrlAsync(product.Id, seName, null, ctx.Store)
             };
 
             if (ctx.Projection.AttributeCombinationAsProduct && productContext.Combinations.Where(x => x.IsActive).Any())
@@ -140,13 +140,13 @@ namespace Smartstore.Core.DataExchange.Export
                 {
                     if (price == null)
                     {
-                        var calculationOptions = _priceCalculationService.CreateDefaultOptions(false, ctx.ContextCustomer, ctx.ContextCurrency, ctx.ProductBatchContext);
+                        var calculationOptions = _priceCalculationService.CreateDefaultOptions(false, null, null, ctx.ProductBatchContext);
                         var productPrice = await _priceCalculationService.CalculatePriceAsync(new PriceCalculationContext(product, calculationOptions));
 
                         price = productPrice.FinalPrice;
                     }
 
-                    result._BasePriceInfo = _priceCalculationService.GetBasePriceInfo(product, price.Value, ctx.ContextCurrency, ctx.ContextLanguage, false, false);
+                    result._BasePriceInfo = _priceCalculationService.GetBasePriceInfo(product, price.Value, null, null, false, false);
                 }
                 else
                 {
@@ -195,13 +195,47 @@ namespace Smartstore.Core.DataExchange.Export
             var productManufacturers = await ctx.ProductBatchContext.ProductManufacturers.GetOrLoadAsync(product.Id);
             var productCategories = await ctx.ProductBatchContext.ProductCategories.GetOrLoadAsync(product.Id);
             var productAttributes = await ctx.ProductBatchContext.Attributes.GetOrLoadAsync(product.Id);
-            var productTags = await ctx.ProductBatchContext.ProductTags.GetOrLoadAsync(product.Id);
             var specificationAttributes = await ctx.ProductBatchContext.SpecificationAttributes.GetOrLoadAsync(product.Id);
+            var productTags = await ctx.ProductBatchContext.ProductTags.GetOrLoadAsync(product.Id);
+            var relatedProducts = await ctx.ProductBatchContext.RelatedProducts.GetOrLoadAsync(product.Id);
+            var crossSellProducts = await ctx.ProductBatchContext.CrossSellProducts.GetOrLoadAsync(product.Id);
             var selectedAttributes = combination?.AttributeSelection;
             var variantAttributeValues = combination?.AttributeSelection?.MaterializeProductVariantAttributeValues(productAttributes);
 
+            var categoryFiles = new Dictionary<int, MediaFile>();
+            var manufacturerFiles = new Dictionary<int, MediaFile>();
+
+            var categoryFileIds = productCategories
+                .Select(x => x.Category.MediaFileId ?? 0)
+                .Where(x => x > 0)
+                .Distinct()
+                .ToArray();
+
+            if (categoryFileIds.Length > 0)
+            {
+                categoryFiles = await _db.MediaFiles
+                    .AsNoTracking()
+                    .Where(x => categoryFileIds.Contains(x.Id))
+                    .ToDictionaryAsync(x => x.Id, x => x);
+            }
+
+            var manufacturerFileIds = productManufacturers
+                .Select(x => x.Manufacturer.MediaFileId ?? 0)
+                .Where(x => x > 0)
+                .Distinct()
+                .ToArray();
+
+            if (manufacturerFileIds.Length > 0)
+            {
+                manufacturerFiles = await _db.MediaFiles
+                    .AsNoTracking()
+                    .Where(x => manufacturerFileIds.Contains(x.Id))
+                    .ToDictionaryAsync(x => x.Id, x => x);
+            }
+
             // Price calculation.
-            var calculationContext = new PriceCalculationContext(product, ctx.PriceCalculationOptions);
+            var calculationOptions = combination != null ? ctx.AttributeCombinationPriceCalcOptions : ctx.PriceCalculationOptions;
+            var calculationContext = new PriceCalculationContext(product, calculationOptions);
             calculationContext.AddSelectedAttributes(combination?.AttributeSelection, product.Id);
             var price = await _priceCalculationService.CalculatePriceAsync(calculationContext);
 
@@ -276,8 +310,9 @@ namespace Smartstore.Core.DataExchange.Export
                 {
                     dynamic dyn = new DynamicEntity(x);
                     dyn.Manufacturer = ToDynamic(x.Manufacturer, ctx);
-                    dyn.Manufacturer.File = x.Manufacturer != null && x.Manufacturer.MediaFileId.HasValue
-                        ? ToDynamic(x.Manufacturer.MediaFile, _mediaSettings.ManufacturerThumbPictureSize, _mediaSettings.ManufacturerThumbPictureSize, ctx)
+
+                    dyn.Manufacturer.File = manufacturerFiles.TryGetValue(x.Manufacturer?.MediaFileId ?? 0, out var mediaFile) && mediaFile != null
+                        ? ToDynamic(mediaFile, _mediaSettings.ManufacturerThumbPictureSize, _mediaSettings.ManufacturerThumbPictureSize, ctx)
                         : null;
 
                     return dyn;
@@ -290,8 +325,9 @@ namespace Smartstore.Core.DataExchange.Export
                 {
                     dynamic dyn = new DynamicEntity(x);
                     dyn.Category = ToDynamic(x.Category, ctx);
-                    dyn.Category.File = x.Category != null && x.Category.MediaFileId.HasValue
-                        ? ToDynamic(x.Category.MediaFile, _mediaSettings.CategoryThumbPictureSize, _mediaSettings.CategoryThumbPictureSize, ctx)
+
+                    dyn.Category.File = categoryFiles.TryGetValue(x.Category?.MediaFileId ?? 0, out var mediaFile) && mediaFile != null
+                        ? ToDynamic(mediaFile, _mediaSettings.CategoryThumbPictureSize, _mediaSettings.CategoryThumbPictureSize, ctx)
                         : null;
 
                     if (dynObject._CategoryName == null)
@@ -383,6 +419,22 @@ namespace Smartstore.Core.DataExchange.Export
                     dyn.SeName = SlugUtility.Slugify(localizedName, _seoSettings);
                     dyn._Localized = GetLocalized(ctx, x, y => y.Name);
 
+                    return dyn;
+                })
+                .ToList();
+
+            dynObject.RelatedProducts = relatedProducts
+                .Select(x =>
+                {
+                    dynamic dyn = new DynamicEntity(x);
+                    return dyn;
+                })
+                .ToList();
+
+            dynObject.CrossSellProducts = crossSellProducts
+                .Select(x =>
+                {
+                    dynamic dyn = new DynamicEntity(x);
                     return dyn;
                 })
                 .ToList();
@@ -491,13 +543,13 @@ namespace Smartstore.Core.DataExchange.Export
                 {
                     var file = _mediaService.ConvertMediaFile(mediaFiles.Select(x => x.MediaFile).First());
 
-                    dynObject._MainPictureUrl = _mediaService.GetUrl(file, imageQuery, ctx.Store.GetHost());
+                    dynObject._MainPictureUrl = _mediaService.GetUrl(file, imageQuery, ctx.Store.GetBaseUrl());
                     dynObject._MainPictureRelativeUrl = _mediaService.GetUrl(file, imageQuery);
                 }
                 else if (!_catalogSettings.HideProductDefaultPictures)
                 {
                     // Get fallback image URL.
-                    dynObject._MainPictureUrl = _mediaService.GetUrl(null, imageQuery, ctx.Store.GetHost());
+                    dynObject._MainPictureUrl = _mediaService.GetUrl(null, imageQuery, ctx.Store.GetBaseUrl());
                     dynObject._MainPictureRelativeUrl = _mediaService.GetUrl(null, imageQuery);
                 }
                 else

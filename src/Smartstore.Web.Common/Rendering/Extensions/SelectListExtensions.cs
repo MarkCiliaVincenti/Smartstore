@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Globalization;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Common;
@@ -79,8 +80,8 @@ namespace Smartstore.Web.Rendering
             ModuleManager moduleManager,
             params string[] selectedMethods)
         {
-            Guard.NotNull(paymentProviders, nameof(paymentProviders));
-            Guard.NotNull(moduleManager, nameof(moduleManager));
+            Guard.NotNull(paymentProviders);
+            Guard.NotNull(moduleManager);
 
             var list = new List<ExtendedSelectListItem>();
 
@@ -144,7 +145,7 @@ namespace Smartstore.Web.Rendering
         /// <param name="countries">Countries.</param>
         /// <param name="selectedCountryCodes">2-letter ISO codes of countries to be selected.</param>
         /// <returns>Select list of countries.</returns>
-        public static IList<CountrySelectListItem> ToSelectListItems(this IEnumerable<Country> countries, string?[] selectedCountryCodes)
+        public static IList<CountrySelectListItem> ToSelectListItems(this IEnumerable<Country> countries, string[]? selectedCountryCodes)
         {
             Guard.NotNull(countries);
             Guard.NotNull(selectedCountryCodes);
@@ -172,6 +173,42 @@ namespace Smartstore.Web.Rendering
 
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Gets a select list of languages.
+        /// </summary>
+        /// <param name="languages">Languages.</param>
+        /// <param name="selectedLanguageIds">Identifiers of languages to be selected.</param>
+        /// <returns>Select list of languages.</returns>
+        public static IList<SelectListItem> ToSelectListItems(this IEnumerable<Language> languages, params int[] selectedLanguageIds)
+        {
+            Guard.NotNull(languages);
+
+            return languages.Select(x => new SelectListItem
+            {
+                Text = x.GetLocalized(x => x.Name),
+                Value = x.Id.ToStringInvariant(),
+                Selected = selectedLanguageIds?.Contains(x.Id) ?? false
+            })
+            .ToList();
+        }
+
+        /// <summary>
+        /// Gets a select list of culture codes.
+        /// </summary>
+        public static IList<SelectListItem> ToSelectListItems(this IEnumerable<CultureInfo> cultureInfos, string[]? selectedCultureCodes = null)
+        {
+            Guard.NotNull(cultureInfos);
+
+            return cultureInfos
+                .Select(ci => new SelectListItem
+                {
+                    Text = $"{ci.DisplayName} [{ci.Name}]",
+                    Value = ci.Name,
+                    Selected = selectedCultureCodes?.Contains(ci.Name) ?? false
+                })
+                .ToList();
         }
 
         /// <summary>

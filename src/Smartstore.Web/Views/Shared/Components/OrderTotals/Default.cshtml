@@ -7,6 +7,12 @@
 </div>
 
 <table class="cart-summary">
+    <tr id="CartSummarySubtotal" class="cart-summary-subtotal"
+        data-subtotal-converted="@(Model.SubTotal.Amount.FormatInvariant())"
+        data-subtotal="@(Model?.CartSubtotal?.SubtotalWithoutDiscount.Amount.FormatInvariant())">
+        <td class="cart-summary-label">@T("ShoppingCart.Totals.SubTotal"):</td>
+        <td class="cart-summary-value">@Model.SubTotal</td>
+    </tr>
     <tr sm-if="Model.DisplayWeight" class="cart-summary-weight">
         <td class="cart-summary-label">@T("ShoppingCart.Weight"):</td>
         <td class="cart-summary-value">
@@ -14,18 +20,11 @@
             <span>@Model.WeightMeasureUnitName</span>
         </td>
     </tr>
-    <tr id="CartSummarySubtotal" class="cart-summary-subtotal"
-        data-subtotal-converted="@(Model.SubTotal.Amount.FormatInvariant())"
-        data-subtotal="@(Model?.CartSubtotal?.SubtotalWithoutDiscount.Amount.FormatInvariant())">
-        <td class="cart-summary-label">@T("ShoppingCart.Totals.SubTotal"):</td>
-        <td class="cart-summary-value">@Model.SubTotal</td>
-    </tr>
     <tr sm-if="Model.SubTotalDiscount != null" class="cart-summary-subtotaldiscount cart-summary-pos">
         <td class="cart-summary-label">
             @if (Model.AllowRemovingSubTotalDiscount)
             {
-                <a href="#"
-                   data-href='@Url.Action("RemoveDiscountCoupon", "ShoppingCart")'
+                <a href="#" data-href='@Url.Action("RemoveDiscountCoupon", "ShoppingCart")'
                    class="btn-remove remove-discount-button pretty-link mr-1 ajax-action-link"
                    title="@T("Common.Remove")">
                     <i class="fa">&times;</i>
@@ -88,8 +87,7 @@
         <td class="cart-summary-label">
             @if (Model.AllowRemovingOrderTotalDiscount)
             {
-                <a href="#"
-                   data-href='@Url.Action("RemoveDiscountCoupon", "ShoppingCart")'
+                <a href="#" data-href='@Url.Action("RemoveDiscountCoupon", "ShoppingCart")'
                    class="btn-remove remove-discount-button pretty-link mr-1 ajax-action-link"
                    title="@T("Common.Remove")">
                     <i class="fa">&times;</i>
@@ -110,7 +108,7 @@
 
                     <div sm-if="Model.IsEditable" class="col col-auto">
                         <a href="#"
-                           data-href='@Url.Action("RemoveGiftCardCode", "ShoppingCart", new { giftCardId = gc.Id })'
+                           data-href='@Url.Action("RemoveGiftCardCoupon", "ShoppingCart", new { giftCardId = gc.Id })'
                            class="btn-remove remove-discount-button pretty-link ajax-action-link"
                            title="@T("Common.Remove")">
                             <i class="fa">&times;</i>

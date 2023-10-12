@@ -25,9 +25,10 @@ namespace Smartstore.PayPal
                     context => context.ControllerIs<ShoppingCartController>(x => x.OffCanvasShoppingCart()));
                 o.Filters.AddConditional<CheckoutFilter>(
                     context => context.ControllerIs<CheckoutController>(x => x.PaymentMethod()) && !context.HttpContext.Request.IsAjax() 
-                    || context.ControllerIs<CheckoutController>(x => x.Confirm()) && !context.HttpContext.Request.IsAjax(), 200);
+                    || context.ControllerIs<CheckoutController>(x => x.Confirm()) && !context.HttpContext.Request.IsAjax()
+                    || context.ControllerIs<CheckoutController>(x => x.BillingAddress()) && !context.HttpContext.Request.IsAjax(), 200);
 
-                o.Filters.AddConditional<ScriptIncludeFilter>(
+                o.Filters.AddConditional<PayPalScriptIncludeFilter>(
                     context => context.ControllerIs<PublicController>() && !context.HttpContext.Request.IsAjax());
 
                 o.Filters.AddConditional<ProductDetailFilter>(
@@ -46,6 +47,7 @@ namespace Smartstore.PayPal
                 });
 
             services.AddScoped<PayPalHelper>();
+            services.AddScoped<PayPalApmServiceContext>();
         }
 
         public override void BuildPipeline(RequestPipelineBuilder builder)
@@ -55,7 +57,7 @@ namespace Smartstore.PayPal
 
             observer.ObserveSettingProperty<PayPalSettings>(
                 x => x.DisplayProductDetailPayLaterWidget, 
-                p => p.InvalidateByRouteAsync("Product/ProductDetails"));
+                p => p.InvalidateByRouteAsync(OutputCacheDefaults.ProductDetailsRoute));
         }
     }
 }

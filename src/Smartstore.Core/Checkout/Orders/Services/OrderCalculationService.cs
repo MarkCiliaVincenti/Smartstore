@@ -497,7 +497,6 @@ namespace Smartstore.Core.Checkout.Orders
                 var calculationContext = await _priceCalculationService.CreateCalculationContextAsync(cartItem, calculationOptions);
                 var (unitPrice, subtotal) = await _priceCalculationService.CalculateSubtotalAsync(calculationContext);
 
-                // There may occur rounding differences between the subtotal and the sum of the line subtotals if RoundOrderItemsEnabled is 'false'.
                 var tax = subtotal.Tax.Value;
                 var itemExclTax = _workingCurrency.RoundIfEnabledFor(tax.PriceNet);
                 var itemInclTax = _workingCurrency.RoundIfEnabledFor(tax.PriceGross);
@@ -527,7 +526,7 @@ namespace Smartstore.Core.Checkout.Orders
                         subtotalExclTaxWithoutDiscount += attributeTax.PriceNet;
                         subtotalInclTaxWithoutDiscount += attributeTax.PriceGross;
 
-                        result.TaxRates.Add(attributeTax.Amount, attributeTax.Rate.Rate);
+                        result.TaxRates.Add(attributeTax.Rate.Rate, attributeTax.Amount);
                     }
                 }
             }
@@ -882,16 +881,16 @@ namespace Smartstore.Core.Checkout.Orders
                 {
                     var item = cartItem.Item;
 
-                    if (_shippingSettings.ChargeOnlyHighestProductShippingSurcharge)
+                    if (item.IsShippingEnabled && !item.IsFreeShipping && item.Product != null)
                     {
-                        if (charge < item.Product.AdditionalShippingCharge)
+                        if (_shippingSettings.ChargeOnlyHighestProductShippingSurcharge)
                         {
-                            charge = item.Product.AdditionalShippingCharge;
+                            if (charge < item.Product.AdditionalShippingCharge)
+                            {
+                                charge = item.Product.AdditionalShippingCharge;
+                            }
                         }
-                    }
-                    else
-                    {
-                        if (item.IsShippingEnabled && !item.IsFreeShipping && item.Product != null)
+                        else
                         {
                             if (item.Product.ProductType == ProductType.BundledProduct && item.Product.BundlePerItemShipping)
                             {
@@ -926,7 +925,7 @@ namespace Smartstore.Core.Checkout.Orders
 
                 // Use fixed rate (if possible).
                 var shippingAddress = cart.Customer?.ShippingAddress ?? null;
-                var shippingRateComputationMethods = _shippingService.LoadActiveShippingRateComputationMethods(cart.StoreId);
+                var shippingRateComputationMethods = _shippingService.LoadEnabledShippingProviders(cart.StoreId);
 
                 if (!shippingRateComputationMethods.Any())
                 {

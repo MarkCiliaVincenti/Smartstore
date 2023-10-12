@@ -138,6 +138,25 @@ namespace Smartstore.Admin.Controllers
             return Json(gridModel);
         }
 
+        [HttpPost]
+        [Permission(Permissions.System.Rule.Delete)]
+        public async Task<IActionResult> RuleSetDelete(GridSelection selection)
+        {
+            var success = false;
+            var ids = selection.GetEntityIds();
+
+            if (ids.Any())
+            {
+                var ruleSets = await _db.RuleSets.GetManyAsync(ids, true);
+                _db.RuleSets.RemoveRange(ruleSets);
+
+                await _db.SaveChangesAsync();
+                success = true;
+            }
+
+            return Json(new { Success = success });
+        }
+
         [Permission(Permissions.System.Rule.Create)]
         public async Task<IActionResult> Create(RuleScope? scope)
         {
@@ -678,6 +697,12 @@ namespace Smartstore.Admin.Controllers
             ViewBag.Scopes = scopes
                 .Select(x =>
                 {
+                    var ruleScope = (RuleScope)x.Value.ToInt();
+                    if (ruleScope == RuleScope.Other)
+                    {
+                        return null;
+                    }
+
                     var item = new ExtendedSelectListItem
                     {
                         Value = x.Value,
@@ -685,11 +710,11 @@ namespace Smartstore.Admin.Controllers
                         Selected = x.Selected
                     };
 
-                    var ruleScope = (RuleScope)x.Value.ToInt();
                     item.CustomProperties["Description"] = Services.Localization.GetLocalizedEnum(ruleScope, 0, true);
 
                     return item;
                 })
+                .Where(x => x != null)
                 .ToList();
 
             if ((entity?.Id ?? 0) != 0)
@@ -718,7 +743,7 @@ namespace Smartstore.Admin.Controllers
                 var paymentMethods = entity.PaymentMethods;
                 if (paymentMethods.Any())
                 {
-                    var paymentProviders = (await _paymentService.Value.LoadAllPaymentMethodsAsync()).ToDictionarySafe(x => x.Metadata.SystemName);
+                    var paymentProviders = (await _paymentService.Value.LoadAllPaymentProvidersAsync()).ToDictionarySafe(x => x.Metadata.SystemName);
 
                     ViewBag.AssignedToPaymentMethods = paymentMethods
                         .Select(x =>

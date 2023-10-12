@@ -23,7 +23,6 @@ namespace Smartstore.Admin.Models.Catalog
         [UIHint("Color")]
         public string Color { get; set; }
         public bool HasColor => Color.HasValue();
-        public bool IsListTypeAttribute { get; set; }
 
         [LocalizedDisplay("*Picture")]
         [UIHint("Media")]
@@ -88,6 +87,7 @@ namespace Smartstore.Admin.Models.Catalog
         }
     }
 
+    [Mapper(Lifetime = ServiceLifetime.Singleton)]
     public class ProductAttributeOptionMapper :
         IMapper<ProductAttributeOption, ProductAttributeOptionModel>,
         IMapper<ProductAttributeOptionModel, ProductAttributeOption>

@@ -14,9 +14,7 @@
                 delete="@Url.Action("ProductSpecAttrDelete")"
                 update="@Url.Action("ProductSpecAttrUpdate")" />
     <paging position="Bottom" page-index="1" show-size-chooser="false" />
-    <sorting>
-        <sort by="DisplayOrder" />
-    </sorting>
+    <sorting />
     <toolbar>
         <toolbar-group class="border-right-0">
             <button datagrid-action="DataGridToolAction.SaveChanges" type="button" class="btn btn-warning no-anims btn-flat">
@@ -32,7 +30,7 @@
         <zone name="datagrid_toolbar_omega"></zone>
         <toolbar-group>
             <button datagrid-action="DataGridToolAction.DeleteSelectedRows" type="button" class="btn btn-danger no-anims btn-flat">
-                <i class="far fa-trash-alt"></i>
+                <i class="far fa-trash-can"></i>
                 <span>@T("Admin.Common.Delete.Selected")</span>
             </button>
         </toolbar-group>

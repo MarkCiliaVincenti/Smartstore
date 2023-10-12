@@ -114,6 +114,14 @@ namespace Smartstore.Core.Identity
         }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the customer was detected
+        /// cookie-less by evaluating the ClientIdent (IP+UserAgent).
+        /// </summary>
+        [NotMapped]
+        [IgnoreDataMember]
+        public bool DetectedByClientIdent { get; set; }
+
+        /// <summary>
         /// Gets or sets the password salt
         /// </summary>
         [StringLength(500)]
@@ -305,7 +313,6 @@ namespace Smartstore.Core.Identity
         /// <summary>
         /// Gets or sets shopping cart items
         /// </summary>
-        [IgnoreDataMember]
         public ICollection<ShoppingCartItem> ShoppingCartItems
         {
             get => _shoppingCartItems ?? LazyLoader.Load(this, ref _shoppingCartItems) ?? (_shoppingCartItems ??= new HashSet<ShoppingCartItem>());

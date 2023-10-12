@@ -12,6 +12,7 @@ using Smartstore.Core.Checkout.Cart;
 using Smartstore.Core.Checkout.Shipping;
 using Smartstore.Core.Content.Media;
 using Smartstore.Core.Identity;
+using Smartstore.Core.Stores;
 using Smartstore.Test.Common;
 
 namespace Smartstore.Core.Tests.Shipping
@@ -22,6 +23,7 @@ namespace Smartstore.Core.Tests.Shipping
         ShippingSettings _shippingSettings;
         IShippingService _shippingService;
         IProductAttributeMaterializer _productAttributeMaterializer;
+        IStoreContext _storeContext;
 
         [OneTimeSetUp]
         public new void SetUp()
@@ -41,17 +43,19 @@ namespace Smartstore.Core.Tests.Shipping
                 null,
                 NullRequestCache.Instance,
                 null,
-                null,
                 new Lazy<IDownloadService>(() => downloadService.Object),
                 new Lazy<CatalogSettings>(),
                 null);
+
+            var storeContextMock = new Mock<IStoreContext>();
+            _storeContext = storeContextMock.Object;
 
             DbContext.ShippingMethods.Add(new ShippingMethod { Name = "1" });
             DbContext.ShippingMethods.Add(new ShippingMethod { Name = "2" });
             DbContext.ShippingMethods.Add(new ShippingMethod { Name = "3" });
             DbContext.ShippingMethods.Add(new ShippingMethod { Name = "4" });
             DbContext.SaveChanges();
-
+            
             _shippingService = new ShippingService(
                 _productAttributeMaterializer,
                 null,
@@ -59,6 +63,7 @@ namespace Smartstore.Core.Tests.Shipping
                 _shippingSettings,
                 ProviderManager,
                 null,
+                _storeContext,
                 null,
                 DbContext);
         }
@@ -74,14 +79,14 @@ namespace Smartstore.Core.Tests.Shipping
         [Test]
         public void Can_load_shippingRateComputationMethod_by_systemKeyword()
         {
-            var srcm = _shippingService.LoadActiveShippingRateComputationMethods(systemName: "FixedRateTestShippingRateComputationMethod").FirstOrDefault();
+            var srcm = _shippingService.LoadEnabledShippingProviders(systemName: "FixedRateTestShippingRateComputationMethod").FirstOrDefault();
             srcm.Value.ShouldNotBeNull();
         }
 
         [Test]
         public void Can_load_active_shippingRateComputationMethods()
         {
-            var srcm = _shippingService.LoadActiveShippingRateComputationMethods();
+            var srcm = _shippingService.LoadEnabledShippingProviders();
             srcm.ShouldNotBeNull();
             srcm.Any().ShouldBeTrue();
         }

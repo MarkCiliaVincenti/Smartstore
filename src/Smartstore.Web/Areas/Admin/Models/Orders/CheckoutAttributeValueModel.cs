@@ -18,7 +18,7 @@ namespace Smartstore.Admin.Models.Orders
 
         [LocalizedDisplay("*WeightAdjustment")]
         public decimal WeightAdjustment { get; set; }
-        public string BaseWeightIn { get; set; }
+        public string BaseWeight { get; set; }
 
         [LocalizedDisplay("*IsPreSelected")]
         public bool IsPreSelected { get; set; }
@@ -34,10 +34,10 @@ namespace Smartstore.Admin.Models.Orders
         [UIHint("Color")]
         public string Color { get; set; }
 
-        public bool IsListTypeAttribute { get; set; }
         public List<CheckoutAttributeValueLocalizedModel> Locales { get; set; } = new();
     }
 
+    [LocalizedDisplay("Admin.Catalog.Attributes.CheckoutAttributes.Values.Fields.")]
     public class CheckoutAttributeValueLocalizedModel : ILocalizedLocaleModel
     {
         public int LanguageId { get; set; }

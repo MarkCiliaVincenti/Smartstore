@@ -209,7 +209,7 @@ namespace Smartstore.Core.DataExchange.Export
                 var file = await _mediaService.GetFileByIdAsync(fileId, MediaLoadFlags.AsNoTracking);
                 if (file != null)
                 {
-                    dynObject._AvatarPictureUrl = _mediaService.GetUrl(file, new ProcessImageQuery { MaxSize = _mediaSettings.AvatarPictureSize }, ctx.Store.GetHost());
+                    dynObject._AvatarPictureUrl = _mediaService.GetUrl(file, new ProcessImageQuery { MaxSize = _mediaSettings.AvatarPictureSize }, ctx.Store.GetBaseUrl());
                 }
             }
 
@@ -229,7 +229,7 @@ namespace Smartstore.Core.DataExchange.Export
         private async Task<IEnumerable<dynamic>> Convert(NewsletterSubscription subscription, DataExporterContext ctx)
         {
             var result = new List<dynamic>();
-            dynamic dynObject = ToDynamic(subscription, ctx);
+            dynamic dynObject = DataExporter.ToDynamic(subscription, ctx);
             result.Add(dynObject);
 
             await _services.EventPublisher.PublishAsync(new RowExportingEvent
@@ -595,6 +595,11 @@ namespace Smartstore.Core.DataExchange.Export
 
         private dynamic ToDynamic(MediaFile file, int thumbPictureSize, int detailsPictureSize, DataExporterContext ctx)
         {
+            if (file == null)
+            {
+                return null;
+            }
+
             return ToDynamic(_mediaService.ConvertMediaFile(file), thumbPictureSize, detailsPictureSize, ctx);
         }
 
@@ -607,7 +612,7 @@ namespace Smartstore.Core.DataExchange.Export
 
             try
             {
-                var host = ctx.Store.GetHost();
+                var host = ctx.Store.GetBaseUrl();
                 dynamic result = new DynamicEntity(file.File);
 
                 result._FileName = file.Name;
@@ -691,7 +696,7 @@ namespace Smartstore.Core.DataExchange.Export
             return result;
         }
 
-        private dynamic ToDynamic(NewsletterSubscription subscription, DataExporterContext ctx)
+        private static dynamic ToDynamic(NewsletterSubscription subscription, DataExporterContext ctx)
         {
             if (subscription == null)
             {

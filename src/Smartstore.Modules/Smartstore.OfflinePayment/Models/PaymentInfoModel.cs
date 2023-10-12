@@ -4,12 +4,6 @@ namespace Smartstore.OfflinePayment.Models
 {
     public abstract class PaymentInfoModelBase : ModelBase
     {
-        public string DescriptionText { get; set; }
-        public string ThumbnailUrl { get; set; }
-    }
-
-    public class CashOnDeliveryPaymentInfoModel : PaymentInfoModelBase
-    {
     }
 
     [LocalizedDisplay("Plugins.Payments.DirectDebit.")]
@@ -42,10 +36,6 @@ namespace Smartstore.OfflinePayment.Models
         public List<SelectListItem> Countries { get; set; } = new();
     }
 
-    public class InvoicePaymentInfoModel : PaymentInfoModelBase
-    {
-    }
-
     [LocalizedDisplay("Payment.")]
     public class ManualPaymentInfoModel : PaymentInfoModelBase
     {
@@ -69,14 +59,6 @@ namespace Smartstore.OfflinePayment.Models
 
         [LocalizedDisplay("*CardCode")]
         public string CardCode { get; set; }
-    }
-
-    public class PayInStorePaymentInfoModel : PaymentInfoModelBase
-    {
-    }
-
-    public class PrepaymentPaymentInfoModel : PaymentInfoModelBase
-    {
     }
 
     public class PurchaseOrderNumberPaymentInfoModel : PaymentInfoModelBase

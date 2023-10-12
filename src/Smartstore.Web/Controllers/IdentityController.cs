@@ -88,8 +88,7 @@ namespace Smartstore.Web.Controllers
 
         [HttpGet]
         [TypeFilter(typeof(DisplayExternalAuthWidgets))]
-        [RequireSsl, AllowAnonymous, NeverAuthorize, CheckStoreClosed(false)]
-        [DisallowRobot(true)]
+        [AllowAnonymous, NeverAuthorize, CheckStoreClosed(false)]
         [LocalizedRoute("/login", Name = "Login")]
         public IActionResult Login(bool? checkoutAsGuest, string returnUrl = null)
         {
@@ -143,19 +142,20 @@ namespace Smartstore.Web.Controllers
 
                     if (result.Succeeded)
                     {
+                        await Services.EventPublisher.PublishAsync(new CustomerSignedInEvent { Customer = customer });
+
                         await _shoppingCartService.MigrateCartAsync(Services.WorkContext.CurrentCustomer, customer);
 
                         Services.ActivityLogger.LogActivity(KnownActivityLogTypes.PublicStoreLogin, T("ActivityLog.PublicStore.Login"), customer);
 
-                        await Services.EventPublisher.PublishAsync(new CustomerSignedInEvent { Customer = customer });
-
                         if (returnUrl.IsEmpty()
+                            || returnUrl == "/"
                             || returnUrl.Contains("/login?", StringComparison.OrdinalIgnoreCase)
                             || returnUrl.Contains("/passwordrecoveryconfirm", StringComparison.OrdinalIgnoreCase)
                             || returnUrl.Contains("/activation", StringComparison.OrdinalIgnoreCase)
                             || !Url.IsLocalUrl(returnUrl))
                         {
-                            return RedirectToRoute("Homepage");
+                            return RedirectToAction("Info", "Customer");
                         }
 
                         return RedirectToReferrer(returnUrl);
@@ -215,8 +215,7 @@ namespace Smartstore.Web.Controllers
         }
 
         [HttpGet]
-        [RequireSsl, AllowAnonymous, NeverAuthorize]
-        [DisallowRobot(true)]
+        [AllowAnonymous, NeverAuthorize]
         [LocalizedRoute("/register", Name = "Register")]
         public async Task<IActionResult> Register(string returnUrl = null)
         {
@@ -251,9 +250,9 @@ namespace Smartstore.Web.Controllers
             if (customer.IsRegistered())
             {
                 // Already registered customer. 
-                await _signInManager.SignOutAsync();
+                // await _signInManager.SignOutAsync();
 
-                Services.WorkContext.CurrentCustomer = null;
+                return RedirectToRoute("RegisterResult", new { message = T("Account.Register.Result.AlreadyRegistered").Value });
             }
 
             if (_captchaSettings.ShowOnRegistrationPage && captchaError.HasValue())
@@ -261,10 +260,23 @@ namespace Smartstore.Web.Controllers
                 ModelState.AddModelError(string.Empty, captchaError);
             }
 
+            foreach (var validator in _userManager.PasswordValidators)
+            {
+                AddModelStateErrors(await validator.ValidateAsync(_userManager, customer, model.Password));
+            }
+
             ViewData["ReturnUrl"] = returnUrl;
 
             if (ModelState.IsValid)
             {
+                var succeeded = false;
+                var oldUserName = customer.Username;
+                var oldEmail = customer.Email;
+                var oldPasswordFormat = customer.PasswordFormat;
+                var oldActive = customer.Active;
+                var oldCreatedOn = customer.CreatedOnUtc;
+                var oldLastActivityDate = customer.LastActivityDateUtc;
+
                 customer.Username = model.Username != null ? model.Username.Trim() : model.Email.Trim();
                 customer.Email = model.Email.Trim();
                 customer.PasswordFormat = _customerSettings.DefaultPasswordFormat;
@@ -272,26 +284,40 @@ namespace Smartstore.Web.Controllers
                 customer.CreatedOnUtc = DateTime.UtcNow;
                 customer.LastActivityDateUtc = DateTime.UtcNow;
 
-                var identityResult = await _userManager.UpdateAsync(customer);
-                if (identityResult.Succeeded)
+                try
                 {
-                    var passwordResult = await _userManager.AddPasswordAsync(customer, model.Password);
-                    if (passwordResult.Succeeded)
+                    var identityResult = await _userManager.UpdateAsync(customer);
+                    if (identityResult.Succeeded)
                     {
-                        // Update customer properties.
-                        await MapRegisterModelToCustomerAsync(customer, model);
-
-                        return await FinalizeCustomerRegistrationAsync(customer, returnUrl);
+                        var passwordResult = await _userManager.AddPasswordAsync(customer, model.Password);
+                        succeeded = passwordResult.Succeeded;
+                        AddModelStateErrors(passwordResult);
                     }
-                    else
+
+                    AddModelStateErrors(identityResult);
+                }
+                finally
+                {
+                    if (!succeeded)
                     {
-                        passwordResult.Errors.Select(x => x.Description).Distinct()
-                            .Each(x => ModelState.AddModelError(string.Empty, x));
+                        customer.Username = oldUserName;
+                        customer.Email = oldEmail;
+                        customer.PasswordFormat = oldPasswordFormat;
+                        customer.Active = oldActive;
+                        customer.CreatedOnUtc = oldCreatedOn;
+                        customer.LastActivityDateUtc = oldLastActivityDate;
+
+                        await _db.SaveChangesAsync();
                     }
                 }
 
-                identityResult.Errors.Select(x => x.Description).Distinct()
-                    .Each(x => ModelState.AddModelError(string.Empty, x));
+                if (succeeded)
+                {
+                    // Update customer properties.
+                    await MapRegisterModelToCustomerAsync(customer, model);
+
+                    return await FinalizeCustomerRegistrationAsync(customer, returnUrl);
+                }
             }
 
             // If we got this far something failed. Redisplay form.
@@ -301,35 +327,39 @@ namespace Smartstore.Web.Controllers
         }
 
         [HttpGet]
-        [RequireSsl, AllowAnonymous, NeverAuthorize]
-        [LocalizedRoute("/registerresult/{resultId:int}", Name = "RegisterResult")]
-        public IActionResult RegisterResult(int resultId)
+        [AllowAnonymous, NeverAuthorize]
+        [LocalizedRoute("/registerresult", Name = "RegisterResult")]
+        public IActionResult RegisterResult(int? resultId, string message = "")
         {
             var resultText = string.Empty;
-            switch ((UserRegistrationType)resultId)
+
+            if (resultId != null)
             {
-                case UserRegistrationType.Disabled:
-                    resultText = T("Account.Register.Result.Disabled");
-                    break;
-                case UserRegistrationType.Standard:
-                    resultText = T("Account.Register.Result.Standard");
-                    break;
-                case UserRegistrationType.AdminApproval:
-                    resultText = T("Account.Register.Result.AdminApproval");
-                    break;
-                case UserRegistrationType.EmailValidation:
-                    resultText = T("Account.Register.Result.EmailValidation");
-                    break;
-                default:
-                    break;
+                switch ((UserRegistrationType)resultId)
+                {
+                    case UserRegistrationType.Disabled:
+                        resultText = T("Account.Register.Result.Disabled");
+                        break;
+                    case UserRegistrationType.Standard:
+                        resultText = T("Account.Register.Result.Standard");
+                        break;
+                    case UserRegistrationType.AdminApproval:
+                        resultText = T("Account.Register.Result.AdminApproval");
+                        break;
+                    case UserRegistrationType.EmailValidation:
+                        resultText = T("Account.Register.Result.EmailValidation");
+                        break;
+                    default:
+                        break;
+                }
             }
 
-            ViewBag.RegisterResult = resultText;
+            ViewBag.RegisterResult = resultText.HasValue() ? resultText + " " + message : message;
             return View();
         }
 
         [HttpGet]
-        [RequireSsl, AllowAnonymous, NeverAuthorize]
+        [AllowAnonymous, NeverAuthorize]
         [LocalizedRoute("/customer/activation", Name = "AccountActivation")]
         public async Task<IActionResult> AccountActivation(string token, string email)
         {
@@ -366,7 +396,7 @@ namespace Smartstore.Web.Controllers
 
         #region Profile
 
-        [DisallowRobot(true)]
+        [DisallowRobot]
         [LocalizedRoute("/profile/{id:int}", Name = "CustomerProfile")]
         public async Task<IActionResult> CustomerProfile(int id)
         {
@@ -428,11 +458,13 @@ namespace Smartstore.Web.Controllers
 
         #region Change password
 
-        [RequireSsl, DisallowRobot]
+        [DisallowRobot]
         public IActionResult ChangePassword()
         {
             if (!Services.WorkContext.CurrentCustomer.IsRegistered())
-                return new UnauthorizedResult();
+            {
+                return ChallengeOrForbid();
+            }
 
             return View(new ChangePasswordModel());
         }
@@ -444,7 +476,7 @@ namespace Smartstore.Web.Controllers
 
             if (!customer.IsRegistered())
             {
-                return new UnauthorizedResult();
+                return ChallengeOrForbid();
             }
 
             if (ModelState.IsValid)
@@ -454,11 +486,8 @@ namespace Smartstore.Web.Controllers
                 {
                     model.Result = T("Account.ChangePassword.Success");
                 }
-                else
-                {
-                    passwordResult.Errors.Select(x => x.Description).Distinct()
-                        .Each(x => ModelState.AddModelError(string.Empty, x));
-                }
+
+                AddModelStateErrors(passwordResult);
             }
 
             return View(model);
@@ -468,7 +497,7 @@ namespace Smartstore.Web.Controllers
 
         #region Password recovery
 
-        [RequireSsl, DisallowRobot]
+        [DisallowRobot]
         [LocalizedRoute("/passwordrecovery", Name = "PasswordRecovery")]
         public IActionResult PasswordRecovery()
         {
@@ -508,7 +537,6 @@ namespace Smartstore.Web.Controllers
             return View(model);
         }
 
-        [RequireSsl]
         public IActionResult PasswordRecoveryConfirm(string token, string email)
         {
             var model = new PasswordRecoveryConfirmModel
@@ -701,6 +729,9 @@ namespace Smartstore.Web.Controllers
         /// </summary>
         private async Task<IActionResult> FinalizeCustomerRegistrationAsync(Customer customer, string returnUrl)
         {
+            // Remove ClientIdent: no other "same-building" guest should be identified by this ident.
+            customer.GenericAttributes.ClientIdent = null;
+
             await AssignCustomerRolesAsync(customer);
 
             // Add reward points for customer registration (if enabled).
@@ -743,7 +774,7 @@ namespace Smartstore.Web.Controllers
                     var redirectUrl = Url.RouteUrl("RegisterResult", new { resultId = (int)UserRegistrationType.Standard });
                     if (returnUrl.HasValue())
                     {
-                        redirectUrl = _webHelper.ModifyQueryString(redirectUrl, "returnUrl=" + returnUrl.UrlEncode(), null);
+                        redirectUrl = _webHelper.ModifyQueryString(redirectUrl, "returnUrl=" + returnUrl.UrlEncode());
                     }
 
                     return Redirect(redirectUrl);
@@ -787,15 +818,9 @@ namespace Smartstore.Web.Controllers
                 customer.Company = model.Company;
             }
 
-            if (_customerSettings.DateOfBirthEnabled)
+            if (_customerSettings.DateOfBirthEnabled && model.DateOfBirth.HasValue)
             {
-                try
-                {
-                    customer.BirthDate = new DateTime(model.DateOfBirthYear.Value, model.DateOfBirthMonth.Value, model.DateOfBirthDay.Value);
-                }
-                catch
-                {
-                }
+                customer.BirthDate = model.DateOfBirth;
             }
 
             if (_customerSettings.CustomerNumberMethod == CustomerNumberMethod.AutomaticallySet && customer.CustomerNumber.IsEmpty())
@@ -920,19 +945,21 @@ namespace Smartstore.Web.Controllers
             }
 
             // Remove customer from 'Guests' role.
-            var mappings = customer
-                .CustomerRoleMappings
-                .Where(x => !x.IsSystemMapping && x.CustomerRole.SystemName == SystemCustomerRoleNames.Guests)
-                .Select(x => x.CustomerRole.Name)
-                .ToList();
-
-            await _userManager.RemoveFromRolesAsync(customer, mappings);
-            await _db.SaveChangesAsync();
+            await _userManager.RemoveFromRoleAsync(customer, SystemCustomerRoleNames.Guests);
         }
 
         private IActionResult RedirectToLocal(string returnUrl)
         {
             return RedirectToReferrer(returnUrl, () => RedirectToRoute("Login"));
+        }
+
+        private void AddModelStateErrors(IdentityResult result)
+        {
+            if (!result.Succeeded)
+            {
+                result.Errors.Select(x => x.Description).Distinct()
+                    .Each(x => ModelState.AddModelError(string.Empty, x));
+            }
         }
 
         #endregion

@@ -2,8 +2,6 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Smartstore.Caching;
 using Smartstore.Core;
@@ -17,7 +15,6 @@ using Smartstore.Core.Common;
 using Smartstore.Core.Common.Services;
 using Smartstore.Core.Configuration;
 using Smartstore.Core.Content.Media;
-using Smartstore.Core.Data;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Stores;
 using Smartstore.PayPal.Client.Messages;
@@ -40,15 +37,11 @@ namespace Smartstore.PayPal.Client
         public const string PAYPAL_ACCESS_TOKEN_PATTERN_KEY = "paypal:accesstoken-*";
 
         private readonly HttpClient _client;
-        private readonly SmartDbContext _db;
-        private readonly ILogger _logger;
         private readonly ICheckoutStateAccessor _checkoutStateAccessor;
         private readonly IStoreContext _storeContext;
         private readonly IWorkContext _workContext;
-        private readonly ILocalizationService _locService;
         private readonly ICurrencyService _currencyService;
         private readonly IMediaService _mediaService;
-        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ICacheFactory _cacheFactory;
         private readonly ISettingFactory _settingFactory;
         private readonly IShoppingCartService _shoppingCartService;
@@ -59,15 +52,11 @@ namespace Smartstore.PayPal.Client
 
         public PayPalHttpClient(
             HttpClient client,
-            SmartDbContext db,
-            ILogger logger,
             ICheckoutStateAccessor checkoutStateAccessor,
             IStoreContext storeContext,
             IWorkContext workContext,
-            ILocalizationService locService,
             ICurrencyService currencyService,
             IMediaService mediaService,
-            IHttpContextAccessor httpContextAccessor,
             ICacheFactory cacheFactory,
             ISettingFactory settingFactory,
             IShoppingCartService shoppingCartService,
@@ -77,15 +66,11 @@ namespace Smartstore.PayPal.Client
             IOrderCalculationService orderCalculationService)
         {
             _client = client;
-            _db = db;
-            _logger = logger;
             _checkoutStateAccessor = checkoutStateAccessor;
             _storeContext = storeContext;
             _workContext = workContext;
-            _locService = locService;
             _currencyService = currencyService;
             _mediaService = mediaService;
-            _httpContextAccessor = httpContextAccessor;
             _cacheFactory = cacheFactory;
             _settingFactory = settingFactory;
             _shoppingCartService = shoppingCartService;
@@ -102,7 +87,7 @@ namespace Smartstore.PayPal.Client
         /// </summary>
         public async Task<PayPalResponse> GetOrderAsync(ProcessPaymentRequest request, ProcessPaymentResult result, CancellationToken cancelToken = default)
         {
-            Guard.NotNull(request, nameof(request));
+            Guard.NotNull(request);
 
             var ordersGetRequest = new OrdersGetRequest(request.PayPalOrderId);
             var response = await ExecuteRequestAsync(ordersGetRequest, cancelToken);
@@ -120,7 +105,7 @@ namespace Smartstore.PayPal.Client
             ProcessPaymentRequest request, 
             CancellationToken cancelToken = default)
         {
-            Guard.NotNull(request, nameof(request));
+            Guard.NotNull(request);
 
             var customer = _workContext.CurrentCustomer;
             var store = _storeContext.GetStoreById(request.StoreId);
@@ -128,7 +113,7 @@ namespace Smartstore.PayPal.Client
             var language = _workContext.WorkingLanguage;
             var paymentData = _checkoutStateAccessor.CheckoutState.PaymentData;
 
-            var logoUrl = store.LogoMediaFileId != 0 ? await _mediaService.GetUrlAsync(store.LogoMediaFileId, 0, store.GetHost(true), false) : string.Empty;
+            var logoUrl = store.LogoMediaFileId != 0 ? await _mediaService.GetUrlAsync(store.LogoMediaFileId, 0, store.GetBaseUrl(), false) : string.Empty;
 
             paymentData.TryGetValueAs<string>("PayPalInvoiceBirthdate", out var birthDate);
             paymentData.TryGetValueAs<string>("PayPalInvoicePhoneNumber", out var phoneNumber);
@@ -221,7 +206,7 @@ namespace Smartstore.PayPal.Client
         /// </summary>
         public virtual async Task<PayPalResponse> UpdateOrderAsync(ProcessPaymentRequest request, ProcessPaymentResult result, CancellationToken cancelToken = default)
         {
-            Guard.NotNull(request, nameof(request));
+            Guard.NotNull(request);
 
             var ordersPatchRequest = new OrdersPatchRequest<object>(request.PayPalOrderId);
             var cart = await _shoppingCartService.GetCartAsync(_workContext.CurrentCustomer, ShoppingCartType.ShoppingCart, request.StoreId);
@@ -253,7 +238,7 @@ namespace Smartstore.PayPal.Client
         /// </summary>
         public virtual async Task<PayPalResponse> AuthorizeOrderAsync(ProcessPaymentRequest request, ProcessPaymentResult result, CancellationToken cancelToken = default)
         {
-            Guard.NotNull(request, nameof(request));
+            Guard.NotNull(request);
 
             var ordersAuthorizeRequest = new OrdersAuthorizeRequest(request.PayPalOrderId);
             var response = await ExecuteRequestAsync(ordersAuthorizeRequest, request.StoreId, cancelToken);
@@ -276,7 +261,7 @@ namespace Smartstore.PayPal.Client
         /// </summary>
         public virtual async Task<PayPalResponse> CaptureOrderAsync(ProcessPaymentRequest request, ProcessPaymentResult result, CancellationToken cancelToken = default)
         {
-            Guard.NotNull(request, nameof(request));
+            Guard.NotNull(request);
 
             var ordersCaptureRequest = new OrdersCaptureRequest(request.PayPalOrderId);
             var response = await ExecuteRequestAsync(ordersCaptureRequest, request.StoreId, cancelToken);
@@ -300,7 +285,7 @@ namespace Smartstore.PayPal.Client
         /// </summary>
         public virtual async Task<PayPalResponse> CapturePaymentAsync(CapturePaymentRequest request, CapturePaymentResult result, CancellationToken cancelToken = default)
         {
-            Guard.NotNull(request, nameof(request));
+            Guard.NotNull(request);
 
             // TODO: (mh) (core) If ERPs are used this ain't the real Invoice-Id > Make optional or remove (TBD with MC)
             var message = new CaptureMessage { InvoiceId = request.Order.OrderNumber };
@@ -323,7 +308,7 @@ namespace Smartstore.PayPal.Client
         /// </summary>
         public virtual async Task<PayPalResponse> VoidPaymentAsync(VoidPaymentRequest request, VoidPaymentResult result, CancellationToken cancelToken = default)
         {
-            Guard.NotNull(request, nameof(request));
+            Guard.NotNull(request);
 
             var voidRequest = new AuthorizationsVoidRequest(request.Order.AuthorizationTransactionId);
             var response = await ExecuteRequestAsync(voidRequest, request.Order.StoreId, cancelToken);
@@ -341,7 +326,7 @@ namespace Smartstore.PayPal.Client
         /// </summary>
         public virtual async Task<PayPalResponse> RefundPaymentAsync(RefundPaymentRequest request, RefundPaymentResult result, CancellationToken cancelToken = default)
         {
-            Guard.NotNull(request, nameof(request));
+            Guard.NotNull(request);
 
             var message = new RefundMessage();
 
@@ -576,11 +561,11 @@ namespace Smartstore.PayPal.Client
             return new List<PurchaseUnit> { purchaseUnit };
         }
 
-        public async Task<OrderMessage> GetOrderForStandardProviderAsync(bool isExpressCheckout = true)
+        public async Task<OrderMessage> GetOrderForStandardProviderAsync(string orderGuid = "", bool isExpressCheckout = true, bool isApm = false)
         {
             var cart = await _shoppingCartService.GetCartAsync(_workContext.CurrentCustomer, ShoppingCartType.ShoppingCart, _storeContext.CurrentStore.Id);
             var settings = _settingFactory.LoadSettings<PayPalSettings>(_storeContext.CurrentStore.Id);
-            var purchaseUnits = await GetPurchaseUnitsAsync(cart);
+            var purchaseUnits = await GetPurchaseUnitsAsync(cart, orderGuid: orderGuid);
 
             var orderMessage = new OrderMessage
             {
@@ -594,9 +579,15 @@ namespace Smartstore.PayPal.Client
                 }
             };
 
+            // APMs only support direct capturing
+            if (isApm)
+            {
+                orderMessage.Intent = Intent.Capture;
+                orderMessage.ProcessingInstruction = "ORDER_COMPLETE_ON_PAYMENT_APPROVAL";
+            }
+            
             return orderMessage;
         }
-
 
         #endregion
 
@@ -625,8 +616,8 @@ namespace Smartstore.PayPal.Client
             CancellationToken cancelToken = default)
             where TRequest : PayPalRequest
         {
-            Guard.NotNull(request, nameof(request));
-            Guard.NotNull(settings, nameof(settings));
+            Guard.NotNull(request);
+            Guard.NotNull(settings);
 
             request = request.Clone<TRequest>();
 
@@ -679,8 +670,8 @@ namespace Smartstore.PayPal.Client
         /// </summary>
         protected virtual async Task HandleAuthorizationAsync(PayPalRequest request, PayPalSettings settings)
         {
-            Guard.NotNull(request, nameof(request));
-            Guard.NotNull(settings, nameof(settings));
+            Guard.NotNull(request);
+            Guard.NotNull(settings);
 
             if (!request.Headers.Contains("Authorization") && request is not AccessTokenRequest)
             {
@@ -723,7 +714,7 @@ namespace Smartstore.PayPal.Client
         {
             if (request.ContentType == null)
             {
-                throw new IOException("HttpRequest did not have content-type header set");
+                throw new PayPalException("HttpRequest did not have content-type header set");
             }
 
             request.ContentType = request.ContentType.ToLower();
@@ -742,7 +733,7 @@ namespace Smartstore.PayPal.Client
 
             if (content == null)
             {
-                throw new IOException($"Unable to serialize request with Content-Type {request.ContentType} because it is not supported.");
+                throw new PayPalException($"Unable to serialize request with Content-Type {request.ContentType} because it is not supported.");
             }
 
             return content;
@@ -752,7 +743,7 @@ namespace Smartstore.PayPal.Client
         {
             if (content.Headers.ContentType == null)
             {
-                throw new IOException("HTTP response did not have content-type header set");
+                throw new PayPalException("HTTP response did not have content-type header set");
             }
 
             var contentType = content.Headers.ContentType.ToString().ToLower();
@@ -766,17 +757,7 @@ namespace Smartstore.PayPal.Client
             }
             else
             {
-                throw new IOException($"Unable to deserialize response with Content-Type {contentType} because it is not supported.");
-            }
-        }
-
-        protected virtual void HandleException(Exception exception, PaymentResult result, bool log = false)
-        {
-            if (exception != null)
-            {
-                result.Errors.Add(exception.Message);
-                if (log)
-                    _logger.Error(exception);
+                throw new PayPalException($"Unable to deserialize response with Content-Type {contentType} because it is not supported.");
             }
         }
 

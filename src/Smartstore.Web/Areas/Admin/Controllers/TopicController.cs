@@ -1,5 +1,4 @@
-﻿
-using Microsoft.AspNetCore.Mvc.Rendering;
+﻿using Microsoft.AspNetCore.Mvc.Rendering;
 using Smartstore.Admin.Models.Topics;
 using Smartstore.Collections;
 using Smartstore.ComponentModel;
@@ -225,17 +224,24 @@ namespace Smartstore.Admin.Controllers
                 {
                     foreach (var item in menu.Items.Where(x => x.ProviderName != null && x.ProviderName == "entity"))
                     {
-                        var link = await _linkResolver.ResolveAsync(item.Model);
-                        if (link.Expression.Schema == DefaultLinkProvider.SchemaTopic && link.EntityId == topic.Id)
+                        try
                         {
-                            var url = Url.Action("EditItem", "Menu", new { id = item.Id, area = "Admin" });
+                            var link = await _linkResolver.ResolveAsync(item.Model);
+                            if (link.Expression.Schema == DefaultLinkProvider.SchemaTopic && link.EntityId == topic.Id)
+                            {
+                                var url = Url.Action("EditItem", "Menu", new { id = item.Id, area = "Admin" });
 
-                            var label = string.Concat(
-                                menu.Title.NullEmpty() ?? menu.SystemName.NullEmpty() ?? StringExtensions.NotAvailable,
-                                " » ",
-                                item.Title.NullEmpty() ?? link.Label.NullEmpty() ?? StringExtensions.NotAvailable);
+                                var label = string.Concat(
+                                    menu.Title.NullEmpty() ?? menu.SystemName.NullEmpty() ?? StringExtensions.NotAvailable,
+                                    " » ",
+                                    item.Title.NullEmpty() ?? link.Label.NullEmpty() ?? StringExtensions.NotAvailable);
 
-                            model.MenuLinks[url] = label;
+                                model.MenuLinks[url] = label;
+                            }
+                        }
+                        catch
+                        {
+                            ModelState.AddModelError(string.Empty, T("Admin.ContentManagement.Menus.Item.InvalidTargetLink", item.Model, item.Title));
                         }
                     }
                 }
@@ -414,8 +420,7 @@ namespace Smartstore.Admin.Controllers
                         var store = Services.StoreContext.GetStoreById(Services.StoreContext.CurrentStore.Id);
                         if (store != null)
                         {
-                            var baseUri = new Uri(store.GetHost());
-                            url = baseUri.GetLeftPart(UriPartial.Authority) + Url.RouteUrl("Topic", new { SeName = await topic.GetActiveSlugAsync() });
+                            url = store.GetAbsoluteUrl(Url.RouteUrl("Topic", new { SeName = await topic.GetActiveSlugAsync() }));
                         }
                     }
                 }

@@ -1,7 +1,7 @@
 ﻿@model TopBarModel
 
 @{
-    string accountUrl = Model.IsAuthenticated ? Url.Action("Info", "Customer") : Url.RouteUrl("Login", new { returnUrl = Context.Request.Query["returnUrl"] });
+    string accountUrl = Model.IsAuthenticated ? Url.Action("Info", "Customer") : Url.RouteUrl("Login", new { returnUrl = Request.RawUrl() });
 }
 
 <zone name="header_menu_top"></zone>
@@ -27,7 +27,7 @@
         @if (Model.IsCustomerImpersonated)
         {
             <a asp-route="Logout" class="menubar-link" title="@T("Account.ImpersonatedAs.Finish.Hint")" rel="nofollow">
-                <i class="fal fa-sign-out-alt menubar-icon"></i>
+                <i class="fal fa-right-from-bracket menubar-icon"></i>
                 <span>@WorkContext.CurrentCustomer.Username</span>
             </a>
         }

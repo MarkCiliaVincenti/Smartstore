@@ -1,13 +1,11 @@
-/// <reference path="_variables-shared.scss" />
-/// <reference path="_mixins.scss" />
-/// <reference path="../lib/bs4/scss/bootstrap.scss" />
+/// <reference path="references.scss" />
 
 // Sortable grip
 // ------------------------------
 
 .sortable-grip {
 	position: absolute;
-	left: 0;
+	inset-inline-start: 0;
 	bottom: 0;
 	height: 100%;
 	width: 5px;

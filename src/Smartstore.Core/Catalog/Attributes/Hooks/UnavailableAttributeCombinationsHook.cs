@@ -13,13 +13,6 @@ namespace Smartstore.Core.Catalog.Attributes
     {
         private readonly ICacheManager _cache;
 
-        private static readonly HashSet<Type> _combinationsInvalidationTypes = new(new[]
-        {
-            typeof(Setting),
-            typeof(Product),
-            typeof(ProductVariantAttributeCombination)
-        });
-
         public UnavailableAttributeCombinationsHook(ICacheManager cache)
         {
             _cache = cache;
@@ -27,11 +20,6 @@ namespace Smartstore.Core.Catalog.Attributes
 
         public override async Task<HookResult> OnAfterSaveAsync(IHookedEntity entry, CancellationToken cancelToken)
         {
-            if (!_combinationsInvalidationTypes.Contains(entry.EntityType))
-            {
-                return HookResult.Void;
-            }
-
             var entity = entry.Entity;
             var productId = 0;
 
@@ -39,7 +27,7 @@ namespace Smartstore.Core.Catalog.Attributes
             {
                 if (setting.Name.EqualsNoCase(TypeHelper.NameOf<PerformanceSettings>(x => x.MaxUnavailableAttributeCombinations, true)))
                 {
-                    await _cache.RemoveByPatternAsync(ProductAttributeMaterializer.UNAVAILABLE_COMBINATIONS_PATTERN_KEY);
+                    await _cache.RemoveByPatternAsync(ProductAttributeMaterializer.UanavailableCombinationsPatternKey);
                 }
             }
             else if (entity is Product)
@@ -50,10 +38,14 @@ namespace Smartstore.Core.Catalog.Attributes
             {
                 productId = combination.ProductId;
             }
+            else
+            {
+                return HookResult.Void;
+            }
 
             if (productId != 0)
             {
-                await _cache.RemoveAsync(ProductAttributeMaterializer.UNAVAILABLE_COMBINATIONS_KEY.FormatInvariant(productId));
+                await _cache.RemoveAsync(ProductAttributeMaterializer.UnavailableCombinationsKey.FormatInvariant(productId));
             }
 
             return HookResult.Ok;

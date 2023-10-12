@@ -26,7 +26,7 @@
         <zone name="datagrid_toolbar_omega"></zone>
         <toolbar-group>
             <button datagrid-action="DataGridToolAction.DeleteSelectedRows" type="button" class="btn btn-danger no-anims btn-flat">
-                <i class="far fa-trash-alt"></i>
+                <i class="far fa-trash-can"></i>
                 <span>@T("Admin.Common.Delete.Selected")</span>
             </button>
         </toolbar-group>
@@ -49,7 +49,7 @@
         <column for="DisplayOrder" halign="center" />
     </columns>
     <row-commands>
-        <a datarow-action="DataRowAction.Custom" class="grid-edit-attr-values" :data-key="item.row.Id">@T("Common.Edit")</a>
+        <a datarow-action="DataRowAction.Custom" class="edit-variant-attribute-value" :data-key="item.row.Id">@T("Common.Edit")</a>
         <a datarow-action="DataRowAction.Delete">@T("Common.Delete")</a>
     </row-commands>
 </datagrid>
@@ -74,13 +74,13 @@
         });
 
         // Open popup on edit click.
-        $(document).on('click', '.grid-edit-attr-values', function (e) {
+        $(document).on('click', '.edit-variant-attribute-value', function (e) {
             e.preventDefault();
 
             var id = $(this).data("key");
             var href = '@Url.Content("~/Admin/Product/ProductAttributeValueEditPopup/")' + id + '?btnId=btnRefresh&formId=productvariantattribute-form';
             openPopup(href, true);
-			return false;
+            return true;
         });
     });
 </script>

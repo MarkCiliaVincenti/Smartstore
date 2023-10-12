@@ -7,12 +7,6 @@
         {
         }
 
-        public string FieldName
-        {
-            get;
-            protected set;
-        }
-
         public IndexTypeCode TypeCode
         {
             get;
@@ -22,10 +16,24 @@
         public object Term
         {
             get;
-            protected set;
+            internal set;
         }
 
-        public bool IsExactMatch
+        /// <summary>
+        /// Specifies the search mode.
+        /// Note that the mode has an impact on the performance of the search. <see cref="SearchMode.ExactMatch"/> is the fastest,
+        /// <see cref="SearchMode.StartsWith"/> is slower and <see cref="SearchMode.Contains"/> the slowest.
+        /// </summary>
+        public SearchMode Mode 
+        { 
+            get; 
+            protected set; 
+        } = SearchMode.Contains;
+
+        /// <summary>
+        /// A value indicating whether to escape the search term.
+        /// </summary>
+        public bool Escape
         {
             get;
             protected set;
@@ -69,7 +77,13 @@
         /// </summary>
         public SearchFilter ExactMatch()
         {
-            IsExactMatch = true;
+            Mode = SearchMode.ExactMatch;
+            return this;
+        }
+
+        public SearchFilter StartsWith()
+        {
+            Mode = SearchMode.StartsWith;
             return this;
         }
 
@@ -109,14 +123,43 @@
 
         public static CombinedSearchFilter Combined(params ISearchFilter[] filters)
         {
-            var filter = new CombinedSearchFilter(filters);
-            filter.Occurence = SearchFilterOccurence.Must;
+            var filter = new CombinedSearchFilter(filters)
+            {
+                Occurence = SearchFilterOccurence.Must
+            };
+
             return filter;
         }
 
-        public static SearchFilter ByField(string fieldName, string term)
+        public static CombinedSearchFilter Combined(string name, params ISearchFilter[] filters)
         {
-            return ByField(fieldName, term, IndexTypeCode.String);
+            var filter = new CombinedSearchFilter(name, filters)
+            {
+                Occurence = SearchFilterOccurence.Must
+            };
+
+            return filter;
+        }
+
+        public static SearchFilter ByField(
+            string fieldName,
+            string term,
+            SearchMode mode = SearchMode.Contains,
+            bool escape = false,
+            bool isNotAnalyzed = false)
+        {
+            Guard.NotEmpty(term);
+            Guard.NotEmpty(fieldName);
+
+            return new SearchFilter
+            {
+                FieldName = fieldName,
+                Term = term,
+                TypeCode = IndexTypeCode.String,
+                Mode = mode,
+                Escape = escape,
+                IsNotAnalyzed = isNotAnalyzed
+            };
         }
 
         public static SearchFilter ByField(string fieldName, int term)
@@ -141,7 +184,7 @@
 
         private static SearchFilter ByField(string fieldName, object term, IndexTypeCode typeCode)
         {
-            Guard.NotEmpty(fieldName, nameof(fieldName));
+            Guard.NotEmpty(fieldName);
 
             return new SearchFilter
             {
@@ -180,7 +223,7 @@
             bool includeLower,
             bool includeUpper)
         {
-            Guard.NotEmpty(fieldName, nameof(fieldName));
+            Guard.NotEmpty(fieldName);
 
             return new RangeSearchFilter
             {
@@ -196,9 +239,7 @@
         #endregion
 
         public override string ToString()
-        {
-            return $"{FieldName}: {Term.ToString()}";
-        }
+            => $"{FieldName}({Mode}):{Term}";
     }
 
     public enum SearchFilterOccurence

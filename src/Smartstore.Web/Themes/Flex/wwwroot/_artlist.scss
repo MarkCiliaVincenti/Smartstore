@@ -1,4 +1,4 @@
-/// <reference path="theme.scss" />
+/// <reference path="references.scss" />
 
 //
 // CSS variables
@@ -6,6 +6,7 @@
 
 .artlist {
     --art-padding: #{$grid-gutter-width / 2};
+    --art-gutter: #{$grid-gutter-width / 2};
     --art-line-height: 1.3;
     --art-font-size: #{$font-size-sm};
     --art-font-size-sm: #{$font-size-xs};
@@ -13,12 +14,12 @@
     --art-finalprice-font-size: 1rem;
     --art-finalprice-color: #{$product-price-color};
     --art-finalprice-offer-color: #{$product-price-color};
-    --art-muted-color: #{mix($body-color, #fff, 67%)};
+    --art-muted-color: #{mix($body-color, $white, 67%)};
     --art-muted-color-2: #{$text-muted};
     --art-border-color: transparent;
     --art-divider-color: #{$gray-300};
-    --art-border-radius: #{$border-radius-sm};
-    --art-box-shadow: #{$box-shadow-sm-var};
+    --art-border-radius: var(--border-radius-md);
+    --art-box-shadow: var(--box-shadow-sm);
     --art-active-bg-color: #{$art-active-bg-color};
     --art-active-border-color: #{$art-active-border-color};
 
@@ -35,35 +36,47 @@
 // --------------------------------------------------
 
 @mixin make-art-row() {
-    display: flex;
-    flex-wrap: wrap;
-    margin-right: ($grid-gutter-width / -2);
-    margin-left:  ($grid-gutter-width / -2);
+  --gutter-x: 0;
+  --gutter-y: 0;
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: calc(-1 * var(--gutter-y));
+  margin-right: calc(-.5 * var(--gutter-x));
+  margin-left: calc(-.5 * var(--gutter-x));
+}
+
+@mixin make-art-col-ready() {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 100%; // Prevent `.col-auto`, `.col` (& responsive variants) from breaking out the grid
+  margin-inline: calc(var(--gutter-x) * .5);
+  margin-top: var(--gutter-y);
 }
 
 @mixin make-art-col($cols) {
-    $w: percentage(1 / $cols);
+    $w: divide(100%, $cols);
 
-    .art {
-        flex: 0 0 $w;
-        max-width: $w;
+    > .art {
+        flex: 0 0 auto;
+        width: $w;
     }
 
-    &.artlist-boxed .art {
-        flex-basis: calc(#{$w} - 1rem);
-        max-width: calc(#{$w} - 1rem);
+    &.artlist-boxed > .art {
+        width: calc(#{$w} - var(--art-gutter));
     }
 }
 
 // Action Bar
 
 .artlist-actions {
+	display: flex;
+	flex-wrap: wrap;
     margin-bottom: 1rem;
+    padding-bottom: 1rem;
 }
 
 .artlist-action {
-    padding: 0 0.25rem;
-
     label {
         font-size: $font-size-sm;
         margin-bottom: 0.35rem;
@@ -73,111 +86,38 @@
         margin-bottom: 0;
     }
 
-    .btn { 
-        border-radius: 0; 
-        transition: none; 
-    }
-
     .mf-dropdown {
         display: block;
     }
 }
 
 .artlist-action-group {
-    padding-bottom: 1rem;
     display: flex;
     flex-wrap: nowrap;
-    margin: 0 -0.25rem;
 }
 
-.artlist-action--filter,
-.artlist-action--sort {
+.artlist-action-group--filtersort {
 	flex-grow: 1;
 	max-width: 100%;
 }
 
-.artlist-action--pager {
-    > * { position: relative; }
-    > *:not(:first-child) { margin-left: -1px; }
-    .btn-pager-prev { border-top-left-radius: $border-radius; border-bottom-left-radius: $border-radius }   
-    .btn-pager-next { border-top-right-radius: $border-radius; border-bottom-right-radius: $border-radius }    
+.artlist-action--filter {
+    width: 100%;
 }
 
-@media (max-width: 360px) {
-    .artlist-actions--top .artlist-action--pagesize .mf-dropdown {
-        // Don't show the top pagesize chooser on too small displays (< 360px, e.g. iPhone 4)
-        display: none !important;
+@include media-breakpoint-up(md) {
+    // Don't let filter button take up the whole space, looks ugly.
+    .artlist-action-group--filtersort {
+	    flex-grow: 0;
     }
-}
 
-@include media-breakpoint-down(md) {
-    .btn-artlist-action,
-    .btn-artlist-action span { font-weight: 400 !important; }
-
-    .artlist-action-group {
-        .btn { 
-            font-size: 1rem; 
-            text-align: left; 
-            border-radius: 0;
-            > b { background: transparent; } 
-        }
+    .artlist-action--filter {
+        min-width: 320px;
     }
-}
-
-@include media-breakpoint-up(lg) {
-    .btn-artlist-action { font-weight: $font-weight-medium; }
 }
 
 .artlist-actions--top {
-	display: flex;
-	flex-wrap: wrap;
-
-	.artlist-action-group {
-		width: 100%;
-	}
-
-	.artlist-action-group--filtersort {
-		flex: 1 1 0; // grow shrink basis
-		max-width: 100%;
-	}
-
-	.artlist-action-group--page {
-		flex: 0 0 auto; // grow shrink basis
-		width: auto;
-		max-width: none;
-		padding-left: 0.5rem;
-	}
-
-	.artlist-action--pagesize,
-	.artlist-action--pager {
-		display: none !important;
-	}
-
-	@include media-breakpoint-up(lg) {
-		flex-wrap: nowrap;
-		border-bottom: 1px solid var(--art-divider-color);
-
-		.artlist-action-group--filtersort {
-			flex-grow: 0;
-		}
-
-		.artlist-action--pagesize,
-		.artlist-action--pager {
-			display: flex !important;
-		}
-
-		.artlist-action-group--page {
-			padding-left: 0;
-		}
-
-		.artlist-action-group {
-			width: auto;
-		}
-
-		.artlist-action-group--page {
-			margin-left: auto;
-		}
-	}
+    border-bottom: 1px solid var(--light-border-subtle);
 }
 
 
@@ -208,10 +148,9 @@
     background: transparent;   
 
     margin-top: -1px;
-    margin-left: -1px;
+    margin-inline-start: -1px;
 
     border-collapse: collapse;
-    border-radius: var(--art-border-radius);
 
     &.active {
         background: var(--art-active-bg-color);
@@ -232,7 +171,7 @@
         content: attr(data-content);
         position: absolute;
         z-index: 1;
-        left: 0;
+        inset-inline-start: 0;
         top: 0rem;
         width: 100%;
         text-align: center;
@@ -251,8 +190,8 @@
 
 .art-badges {
     position: absolute;
-    left: 0;
-    right: 0;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
     bottom: 0;
     display: inline-flex;
     flex-wrap: wrap;
@@ -260,7 +199,9 @@
 }
 
 .art-badge {
-    margin: 0 3px 3px 0;
+    margin: 0;
+    margin-block-start: 3px;
+    margin-inline-end: 3px;
 }
 
 .art-data-block,
@@ -283,7 +224,6 @@
     font-weight: $font-weight-medium;
     margin-bottom: 0.25rem;
     line-height: var(--art-line-height);
-    > a { color: $body-color; }
 }
 
 .art-genericname {
@@ -291,7 +231,6 @@
     text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
-    > a { color: $body-color; }
 }
 
 .art-description {
@@ -317,7 +256,7 @@
     font-weight: $font-weight-medium;
     font-size: var(--art-finalprice-font-size);
     color: var(--art-finalprice-color);
-    margin-right: 0.4rem;
+    margin-inline-end: 0.4rem;
 
     .art-price-call & {
         font-size: var(--art-font-size-sm);
@@ -344,7 +283,7 @@
 }
 
 .art-compareprice-label {
-    margin-right: 3px;
+    margin-inline-end: 3px;
 }
 
 .art-compareprice-value {
@@ -369,8 +308,7 @@
 .art-drop {
     --shadow-yoffset: 1;
     position: absolute;
-    left: -1px;
-    right: -1px;
+    inset-inline: -1px;
     bottom: 0;
     background: var(--art-active-bg-color);
     box-shadow: var(--art-box-shadow);
@@ -394,11 +332,11 @@
 
     .art-btn {
         display: block;
-        border-radius: 0;
         border: none;
         outline: none;
         transition: none;
         padding: 0.65rem 0;
+        border-radius: 0;
 
         &:focus:not(:active) {
             box-shadow: none !important;
@@ -416,20 +354,20 @@
 
 .art-color-opts {
     position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
     @include clearfix();
 }
 
 .art-color-opt {
-    float: left;
     display: block;
     width: 1rem;
     height: 1rem;
-    margin-right: 2px;
-    margin-bottom: 2px;
     text-decoration: none;
 
     &:hover {
-        outline: 1px solid rgba(0,0,0, 0.3);
+        outline: 1px solid rgba(#000, 0.3);
     }
 }
 
@@ -447,7 +385,7 @@
 
     td { padding: 1px 0; }
     td:first-child { 
-        padding-right: 0.75rem; 
+        padding-inline-end: 0.75rem; 
         font-weight: $font-weight-medium; 
     }
 }
@@ -458,6 +396,13 @@
 .art-name,
 .art-genericname {
     font-size: var(--art-font-size);
+    > a { 
+        color: $body-color; 
+    }
+
+    > a:not(:hover) {
+        text-decoration: none; 
+    }
 }
 
 .art-brand,
@@ -490,10 +435,10 @@
 
     .art-data-block {
         @include make-art-row();
-        padding-left: $grid-gutter-width / 1.5;
-        padding-right: 0;
-        margin-left: 0;
-        margin-right: 0;
+        padding-inline-start: $grid-gutter-width / 1.5;
+        padding-inline-end: 0;
+        margin-inline-start: 0;
+        margin-inline-end: 0;
         flex-basis: 0;
         flex-grow: 1;
         max-width: 100%;
@@ -511,7 +456,7 @@
 
     .art-actions-block {
         width: 220px;
-        padding-left: $grid-gutter-width / 1.5;
+        padding-inline-start: $grid-gutter-width / 1.5;
     }
 
     .art-description {
@@ -547,14 +492,14 @@
     }
 
     .floating > .art-brand {
-        padding-right: 90px; // ratings width + 10px
+        padding-inline-end: 90px; // ratings width + 10px
         min-height: 20px; // Height of rating widget
     }
 
     .floating > .art-rating {
         position: absolute;
         top: 0;
-        right: 0;
+        inset-inline-end: 0;
     }
 
     .art-name {
@@ -584,7 +529,7 @@
         .art-actions-block { 
             // Put right hand action block below info block
             display: block;
-            padding-left: 0;
+            padding-inline-start: 0;
             padding-top: 1rem;
             width: 100%;
         }
@@ -611,15 +556,27 @@
 }
 
 
+// Grid styles (common)
+// ---------------------------------------------
+
+.artlist-boxed > .art,
+.artlist-grid > .art.active {
+    border-radius: var(--art-border-radius);
+}
+
+
 // Grid style
 // ---------------------------------------------
 
 .artlist-grid {
     @include make-art-row();
-    margin-left: 0;
-    margin-right: 0;
 
-    &:not(.artlist-boxed).artlist::after {
+    &.artlist-boxed {
+        --gutter-x: var(--art-gutter);
+        --gutter-y: var(--art-gutter);
+    }
+
+    &:not(.artlist-boxed).artlist:after {
         // Make continous line after last row
         position: relative;
         content: '';
@@ -629,7 +586,8 @@
         bottom: 1px;
     }
     
-    .art {
+    > .art {
+        @include make-art-col-ready();
         border-bottom-color: var(--art-divider-color);
         display: flex;
         flex-flow: column;
@@ -680,8 +638,7 @@
     }
 
     .art-variant-info {
-        padding-left: var(--art-padding);
-        padding-right: var(--art-padding);
+        padding-inline: var(--art-padding);
     }
 
     @include media-breakpoint-up(xs) {
@@ -743,16 +700,10 @@
         }
     }
 
-    &.artlist-boxed {
-        margin-left: -0.5rem;
-        margin-right: -0.5rem;
-
-        .art {
-            background: var(--art-active-bg-color);
-            border-color: var(--art-border-color);
-            margin: 0 0.5rem 1rem 0.5rem;
-            box-shadow: var(--art-box-shadow);
-        }
+    &.artlist-boxed .art {
+        background: var(--art-active-bg-color);
+        border-color: var(--art-border-color);
+        box-shadow: var(--art-box-shadow);
     }
 }
 
@@ -782,6 +733,11 @@
 }
 
 .slick-slider {
+    &.artlist.slick-dotted .slick-dots {
+        // Move slightly up in boxes
+        transform: translateY(-25%);
+    }
+
     &.artlist-grid {
         display: block !important;
     }

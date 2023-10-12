@@ -59,7 +59,7 @@ namespace Smartstore.Core.Seo.Routing
 
         public UrlPolicy(HttpContext httpContext)
         {
-            Guard.NotNull(httpContext, nameof(httpContext));
+            Guard.NotNull(httpContext);
 
             _httpContext = httpContext;
             _services = httpContext.RequestServices;
@@ -177,7 +177,8 @@ namespace Smartstore.Core.Seo.Routing
 
             var culture = Culture.ToString();
             var path = Path.ToString();
-            var combinedPath = CombineSegments(culture, path);
+            var combinedPath = RouteHelper.NormalizePathComponent(CombineSegments(culture, path));
+            var queryString = new QueryString(RouteHelper.NormalizeQueryComponent(QueryString));
 
             if (leftMod)
             {
@@ -186,13 +187,13 @@ namespace Smartstore.Core.Seo.Routing
                     new HostString(Host),
                     PathBase,
                     combinedPath,
-                    new QueryString(QueryString));
+                    queryString);
             }
 
             return UriHelper.BuildRelative(
                 PathBase,
                 combinedPath,
-                new QueryString(QueryString));
+                queryString);
         }
 
         public static string CombineSegments(params string[] segments)

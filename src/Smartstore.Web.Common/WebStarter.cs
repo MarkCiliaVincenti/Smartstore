@@ -15,12 +15,14 @@ global using Smartstore.Core.Data;
 global using Smartstore.Core.Widgets;
 global using Smartstore.Domain;
 global using Smartstore.Engine;
+using System.Net;
 using System.Text.Encodings.Web;
 using System.Text.Unicode;
 using Autofac;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.XmlEncryption;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -48,7 +50,8 @@ namespace Smartstore.Web
             if (appContext.IsInstalled)
             {
                 // Configure Cookie Policy Options
-                services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<CookiePolicyOptions>, CookiePolicyOptionsConfigurer>());
+                services.TryAddEnumerable(
+                    ServiceDescriptor.Singleton<IConfigureOptions<CookiePolicyOptions>, CookiePolicyOptionsConfigurer>());
             }
 
             // Add AntiForgery
@@ -80,6 +83,7 @@ namespace Smartstore.Web
             // Add session feature
             services.AddSession(o =>
             {
+                o.IdleTimeout = TimeSpan.FromMinutes(30);
                 o.Cookie.Name = CookieNames.Session;
                 o.Cookie.IsEssential = true;
             });
@@ -112,6 +116,13 @@ namespace Smartstore.Web
 
             builder.Configure(StarterOrdering.BeforeExceptionHandlerMiddleware, app =>
             {
+                // Reverse Proxy
+                var proxy = appContext.AppConfiguration.ReverseProxy;
+                if (proxy != null && proxy.Enabled)
+                {
+                    app.UseForwardedHeaders(MapForwardedHeadersOptions(proxy));
+                }
+                
                 // Must come very early.
                 app.UseContextState();
             });
@@ -145,6 +156,7 @@ namespace Smartstore.Web
             builder.Configure(StarterOrdering.AfterStaticFilesMiddleware, app =>
             {
                 app.UsePoweredBy();
+                app.UseSecurityHeaders();
             });
 
             builder.Configure(StarterOrdering.RoutingMiddleware, app =>
@@ -205,6 +217,67 @@ namespace Smartstore.Web
                 routes.MapComposite(SlugRouteTransformer.Routers.Select(x => x.MapRoutes(routes)).ToArray())
                     .WithMetadata(new SuppressMatchingMetadata());
             });
+        }
+
+        private static ForwardedHeadersOptions MapForwardedHeadersOptions(SmartConfiguration.ProxyConfiguration config)
+        {
+            var forwardedHeaders = ForwardedHeaders.None;
+
+            if (config.ForwardForHeader)
+                forwardedHeaders |= ForwardedHeaders.XForwardedFor;
+
+            if (config.ForwardHostHeader)
+                forwardedHeaders |= ForwardedHeaders.XForwardedHost;
+
+            if (config.ForwardProtoHeader)
+                forwardedHeaders |= ForwardedHeaders.XForwardedProto;
+
+            var options = new ForwardedHeadersOptions
+            {
+                ForwardedHeaders = forwardedHeaders,
+                // IIS already serves as a reverse proxy and will add X-Forwarded headers to all requests,
+                // so we need to increase this limit, otherwise, passed forwarding headers will be ignored.
+                ForwardLimit = 2
+            };
+
+            if (config.ForwardedForHeaderName.HasValue())
+                options.ForwardedForHeaderName = config.ForwardedForHeaderName;
+
+            if (config.ForwardedHostHeaderName.HasValue())
+                options.ForwardedHostHeaderName = config.ForwardedHostHeaderName;
+
+            if (config.ForwardedProtoHeaderName.HasValue())
+                options.ForwardedProtoHeaderName = config.ForwardedProtoHeaderName;
+
+            if (config.KnownProxies != null)
+            {
+                var addresses = config.KnownProxies
+                    .Select(x =>
+                    {
+                        if (IPAddress.TryParse(x, out var ip))
+                        {
+                            return ip;
+                        }
+
+                        return null;
+                    })
+                    .Where(x => x != null)
+                    .ToArray();
+                
+                options.KnownProxies.AddRange(addresses);
+                if (addresses.Length > 0)
+                {
+                    // Disable limit, because at least one KnownProxy is configured.
+                    options.ForwardLimit = null;
+                }
+            }
+
+            if (config.AllowedHosts != null)
+            {
+                options.AllowedHosts.AddRange(config.AllowedHosts);
+            }
+
+            return options;
         }
     }
 }

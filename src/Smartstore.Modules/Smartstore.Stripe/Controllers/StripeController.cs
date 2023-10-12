@@ -12,6 +12,7 @@ using Smartstore.Core.Checkout.Tax;
 using Smartstore.Core.Common.Services;
 using Smartstore.Core.Data;
 using Smartstore.Core.Identity;
+using Smartstore.Core.Stores;
 using Smartstore.StripeElements.Models;
 using Smartstore.StripeElements.Providers;
 using Smartstore.StripeElements.Services;
@@ -171,7 +172,7 @@ namespace Smartstore.StripeElements.Controllers
                 paymentRequest.CustomerId = customer.Id;
                 paymentRequest.PaymentMethodSystemName = StripeElementsProvider.SystemName;
 
-                // We must check here if an order can be placed to avoid creating unauthorized Sofort transactions.
+                // We must check here if an order can be placed to avoid creating unauthorized transactions.
                 var (warnings, cart) = await _orderProcessingService.ValidateOrderPlacementAsync(paymentRequest);
                 if (warnings.Count == 0)
                 {
@@ -185,7 +186,7 @@ namespace Smartstore.StripeElements.Controllers
                         {
                             Amount = cartTotal.ConvertedAmount.Total.Value.RoundedAmount.ToSmallestCurrencyUnit(),
                             Currency = state.PaymentIntent.Currency,
-                            PaymentMethod = state.PaymentMethod,
+                            PaymentMethod = state.PaymentMethod
                         };
 
                         var service = new PaymentIntentService();
@@ -193,7 +194,7 @@ namespace Smartstore.StripeElements.Controllers
 
                         var confirmOptions = new PaymentIntentConfirmOptions
                         {
-                            ReturnUrl = store.GetHost(true) + Url.Action("RedirectionResult", "Stripe").TrimStart('/')
+                            ReturnUrl = store.GetAbsoluteUrl(Url.Action("RedirectionResult", "Stripe").TrimStart('/'))
                         };
 
                         paymentIntent = await service.ConfirmAsync(paymentIntent.Id, confirmOptions);
@@ -214,7 +215,7 @@ namespace Smartstore.StripeElements.Controllers
                 }
                 else
                 {
-                    messages.AddRange(warnings.Select(x => HtmlUtility.ConvertPlainTextToHtml(x)));
+                    messages.AddRange(warnings.Select(HtmlUtility.ConvertPlainTextToHtml));
                 }
             }
             catch (Exception ex)
@@ -230,7 +231,9 @@ namespace Smartstore.StripeElements.Controllers
         {
             var error = false;
             string message = null;
-            var success = redirect_status == "succeeded" || redirect_status == "pending";
+            var success = redirect_status == "succeeded" || redirect_status == "pending" || !redirect_status.HasValue();
+
+            //Logger.LogInformation($"Stripe redirection result: '{redirect_status}'");
 
             if (success)
             {
@@ -281,10 +284,12 @@ namespace Smartstore.StripeElements.Controllers
 
             try
             {
-                var stripeEvent = EventUtility.ParseEvent(json);
                 var signatureHeader = Request.Headers["Stripe-Signature"];
 
-                stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, endpointSecret);
+                // INFO: There should never be a version mismatch, as long as the hook was created in Smartstore backend.
+                // But to keep even more stable we don't throw an exception on API version mismatch.
+                var stripeEvent = EventUtility.ParseEvent(json, false);
+                stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, endpointSecret, throwOnApiVersionMismatch: false);
 
                 if (stripeEvent.Type == Stripe.Events.PaymentIntentSucceeded)
                 {
@@ -320,7 +325,7 @@ namespace Smartstore.StripeElements.Controllers
                     }
                     else
                     {
-                        Logger.Warn(T("Plugins.Payments.Stripe.OrderNotFound", paymentIntent.Id));
+                        Logger.Warn(T("Plugins.Smartstore.Stripe.OrderNotFound", paymentIntent.Id));
                         return Ok();
                     }
                 }
@@ -338,13 +343,13 @@ namespace Smartstore.StripeElements.Controllers
                         order.PaymentStatus = PaymentStatus.Voided;
 
                         // Write some infos into order notes.
-                        WriteOrderNotes(order, paymentIntent.Charges.FirstOrDefault());
+                        WriteOrderNotes(order, paymentIntent.LatestCharge);
 
                         await _db.SaveChangesAsync();
                     }
                     else
                     {
-                        Logger.Warn(T("Plugins.Payments.Stripe.OrderNotFound", paymentIntent.Id));
+                        Logger.Warn(T("Plugins.Smartstore.Stripe.OrderNotFound", paymentIntent.Id));
                         return Ok();
                     }
                 }
@@ -388,24 +393,25 @@ namespace Smartstore.StripeElements.Controllers
                     }
                     else
                     {
-                        Logger.Warn(T("Plugins.Payments.Stripe.OrderNotFound", charge.PaymentIntentId));
+                        Logger.Warn(T("Plugins.Smartstore.Stripe.OrderNotFound", charge.PaymentIntentId));
                         return Ok();
                     }
                 }
                 else
                 {
-                    Logger.Warn(T("Unhandled event type: {0}", stripeEvent.Type));
+                    Logger.Warn("Unhandled Stripe event type: {0}", stripeEvent.Type);
                 }
 
                 return Ok();
             }
-            catch (StripeException e)
+            catch (StripeException ex)
             {
-                Logger.Error("Error: {0}", e.Message);
+                Logger.Error(ex);
                 return BadRequest();
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.Error(ex);
                 return StatusCode(500);
             }
         }
@@ -415,10 +421,7 @@ namespace Smartstore.StripeElements.Controllers
         {
             if (charge != null)
             {
-                order.OrderNotes.Add(new OrderNote { 
-                    DisplayToCustomer = true, 
-                    Note = $"Reason for Charge-ID {charge.Id}: {charge.Refunds.FirstOrDefault().Reason} - {charge.Description}" }
-                );
+                order.AddOrderNote($"Reason for Charge-ID {charge.Id}: {charge.Refunds.FirstOrDefault().Reason} - {charge.Description}", true);
             }
         }
     }

@@ -18,7 +18,7 @@ using Smartstore.StripeElements.Settings;
 
 namespace Smartstore.StripeElements.Providers
 {
-    [SystemName("Smartstore.StripeElements")]
+    [SystemName("Payments.StripeElements")]
     [FriendlyName("Stripe Elements")]
     [Order(1)]
     public class StripeElementsProvider : PaymentMethodBase, IConfigurable
@@ -54,7 +54,7 @@ namespace Smartstore.StripeElements.Providers
 
         public ILogger Logger { get; set; } = NullLogger.Instance;
 
-        public static string SystemName => "Smartstore.StripeElements";
+        public static string SystemName => "Payments.StripeElements";
 
         public override bool SupportCapture => true;
 

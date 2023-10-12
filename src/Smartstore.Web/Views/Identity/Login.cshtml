@@ -11,7 +11,7 @@
     var returnUrl = Context.Request.Query["returnUrl"].ToString();
     if (returnUrl.HasValue())
     {
-        registerUrl = Display.ModifyQueryString(registerUrl, "returnUrl=" + returnUrl.UrlEncode(), null);
+        registerUrl = Display.ModifyQueryString(registerUrl, "returnUrl=" + returnUrl.UrlEncode());
     }
 
     var currentUser = WorkContext.CurrentCustomer;
@@ -39,7 +39,7 @@
                     {
                         <div class="form-group">
                             <div class="input-group input-group-lg has-icon">
-                                <input asp-for="Username" class="username" autofocus="autofocus" />
+                                <input asp-for="Username" class="username rounded" autofocus="autofocus" />
                                 <span class="input-group-icon text-muted">
                                     <i class="icm icm-user"></i>
                                 </span>
@@ -51,7 +51,7 @@
                     {
                         <div class="form-group">
                             <div class="input-group input-group-lg has-icon">
-                                <input asp-for="Email" class="email" autofocus="autofocus" />
+                                <input asp-for="Email" class="email rounded" autofocus="autofocus" />
                                 <span class="input-group-icon text-muted">
                                     <i class="icm icm-envelope-open"></i>
                                 </span>
@@ -63,7 +63,7 @@
                     {
                         <div class="form-group">
                             <div class="input-group input-group-lg has-icon">
-                                <input asp-for="UsernameOrEmail" class="username" autofocus="autofocus" />
+                                <input asp-for="UsernameOrEmail" class="username rounded" autofocus="autofocus" />
                                 <span class="input-group-icon text-muted">
                                     <i class="icm icm-user"></i>
                                 </span>
@@ -74,7 +74,7 @@
 
                     <div class="form-group">
                         <div class="input-group input-group-lg has-icon">
-                            <input asp-for="Password" class="password" autocomplete="off" />
+                            <input asp-for="Password" class="password rounded" autocomplete="off" />
                             <span class="input-group-icon text-muted">
                                 <i class="icm icm-shield"></i>
                             </span>
@@ -92,7 +92,7 @@
                     <captcha sm-enabled="Model.DisplayCaptcha" class="form-group" />
 
                     <div class="form-group">
-                        <button type="submit" class="btn btn-primary btn-lg btn-block btn-login">
+                        <button type="submit" class="btn btn-primary btn-lg btn-block btn-login btn-prevent-multiclick">
                             @T("Account.Login.LoginButton")
                         </button>
                     </div>
@@ -101,7 +101,7 @@
                         <div class="text-center text-uppercase mb-2">
                             - @T("Common.Or") -
                         </div>
-                        <div class="row flex-wrap justify-content-center xs-gutters">
+                        <div class="vstack gap-2">
                             <zone name="external_auth_buttons" />
                         </div>
                     </div>

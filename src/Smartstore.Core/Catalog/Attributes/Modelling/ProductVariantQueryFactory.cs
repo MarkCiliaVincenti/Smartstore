@@ -4,6 +4,7 @@ using Smartstore.Collections;
 using Smartstore.Core.Catalog.Search.Modelling;
 using Smartstore.Core.Checkout.Attributes;
 using Smartstore.Core.Checkout.GiftCards;
+using Smartstore.Utilities;
 
 namespace Smartstore.Core.Catalog.Attributes.Modelling
 {
@@ -76,7 +77,7 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
 
             foreach (var item in QueryItems)
             {
-                if (!item.Value.Any() || item.Key.EndsWith("-day") || item.Key.EndsWith("-month"))
+                if (!item.Value.Any())
                 {
                     continue;
                 }
@@ -121,37 +122,15 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
             if (key.EndsWith("-date"))
             {
                 // Convert from one query string item.
-                var dateItems = value.SplitSafe('-');
+                var dateItems = value.SplitSafe('-').ToArray();
                 year = dateItems.ElementAtOrDefault(0).ToInt();
                 month = dateItems.ElementAtOrDefault(1).ToInt();
                 day = dateItems.ElementAtOrDefault(2).ToInt();
             }
-            else if (key.EndsWith("-year"))
-            {
-                // Convert from three form controls.
-                var dateKey = key.Replace("-year", "");
-                year = value.ToInt();
-
-                if (QueryItems.ContainsKey(dateKey + "-month"))
-                {
-                    var str = QueryItems[dateKey + "-month"].FirstOrDefault();
-                    month = str?.ToInt() ?? 0;
-                }
-
-                if (QueryItems.ContainsKey(dateKey + "-day"))
-                {
-                    var str = QueryItems[dateKey + "-day"].FirstOrDefault();
-                    day = str?.ToInt() ?? 0;
-                }
-            }
 
             if (year > 0 && month > 0 && day > 0)
             {
-                try
-                {
-                    return new DateTime(year, month, day);
-                }
-                catch { }
+                return CommonHelper.TryAction(() => new DateTime(year, month, day));
             }
 
             return null;
@@ -165,15 +144,16 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
                 return;
             }
 
-            var isDate = key.EndsWith("-date") || key.EndsWith("-year");
+            var isDate = key.EndsWith("-date");
             var isFile = key.EndsWith("-file");
             var isText = key.EndsWith("-text");
 
             if (isDate || isFile || isText)
             {
-                var value = isText ? string.Join(",", values) : values.First();
-                var variant = new ProductVariantQueryItem(value)
+                var value = isText ? string.Join(',', values) : values.First().EmptyNull();
+                var variant = new ProductVariantQueryItem
                 {
+                    Value = value,
                     ProductId = ids[0].ToInt(),
                     BundleItemId = ids[1].ToInt(),
                     AttributeId = ids[2].ToInt(),
@@ -193,15 +173,14 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
             {
                 foreach (var value in values)
                 {
-                    var variant = new ProductVariantQueryItem(value)
+                    query.AddVariant(new()
                     {
+                        Value = value ?? string.Empty,
                         ProductId = ids[0].ToInt(),
                         BundleItemId = ids[1].ToInt(),
                         AttributeId = ids[2].ToInt(),
                         VariantAttributeId = ids[3].ToInt()
-                    };
-
-                    query.AddVariant(variant);
+                    });
                 }
             }
         }
@@ -215,7 +194,7 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
                 return;
             }
 
-            var isDate = key.EndsWith("-date") || key.EndsWith("-year");
+            var isDate = key.EndsWith("-date");
             var isFile = key.EndsWith("-file");
             var isText = key.EndsWith("-text");
 
@@ -225,7 +204,7 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
                 len = ids.Length;
             }
 
-            var alias = string.Join("-", ids.Take(len - 3));
+            var alias = string.Join('-', ids.Take(len - 3));
             var attributeId = _catalogSearchQueryAliasMapper.GetVariantIdByAlias(alias, languageId);
             if (attributeId == 0)
             {
@@ -243,9 +222,10 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
 
             if (isDate || isFile || isText)
             {
-                var value = isText ? string.Join(",", values) : values.First();
-                var variant = new ProductVariantQueryItem(value)
+                var value = isText ? string.Join(',', values) : values.First().EmptyNull();
+                var variant = new ProductVariantQueryItem
                 {
+                    Value = value,
                     ProductId = productId,
                     BundleItemId = bundleItemId,
                     AttributeId = attributeId,
@@ -275,31 +255,26 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
                     if (valueIds.Length >= 2)
                     {
                         optionId = valueIds.ElementAtOrDefault(valueIds.Length - 1).ToInt();
-                        valueAlias = string.Join("-", valueIds.Take(valueIds.Length - 1));
+                        valueAlias = string.Join('-', valueIds.Take(valueIds.Length - 1));
                     }
 
-                    var variant = new ProductVariantQueryItem(optionId == 0 ? value : optionId.ToString())
+                    query.AddVariant(new()
                     {
+                        Value = optionId == 0 ? value.EmptyNull() : optionId.ToString(),
                         ProductId = productId,
                         BundleItemId = bundleItemId,
                         AttributeId = attributeId,
                         VariantAttributeId = variantAttributeId,
-                        Alias = alias
-                    };
-
-                    if (optionId != 0)
-                    {
-                        variant.ValueAlias = valueAlias;
-                    }
-
-                    query.AddVariant(variant);
+                        Alias = alias,
+                        ValueAlias = optionId != 0 ? valueAlias : null
+                    });
                 }
             }
         }
 
         protected virtual void ConvertGiftCard(ProductVariantQuery query, string key, string value)
         {
-            var elements = key.Replace("giftcard", "").SplitSafe('-').ToArray();
+            var elements = key.Replace("giftcard", string.Empty).SplitSafe('-').ToArray();
             if (elements.Length > 2)
             {
                 var giftCard = new GiftCardQueryItem(elements[2], value)
@@ -321,15 +296,17 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
             }
 
             var attributeId = ids[0].ToInt();
-            var isDate = key.EndsWith("-date") || key.EndsWith("-year");
+            var isDate = key.EndsWith("-date");
             var isFile = key.EndsWith("-file");
             var isText = key.EndsWith("-text");
 
             if (isDate || isFile || isText)
             {
-                var value = isText ? string.Join(",", values) : values.First();
-                var attribute = new CheckoutAttributeQueryItem(attributeId, value)
+                var value = isText ? string.Join(',', values) : values.First().EmptyNull();
+                var attribute = new CheckoutAttributeQueryItem
                 {
+                    Value = value,
+                    AttributeId = attributeId,
                     IsFile = isFile,
                     IsText = isText
                 };
@@ -345,7 +322,11 @@ namespace Smartstore.Core.Catalog.Attributes.Modelling
             {
                 foreach (var value in values)
                 {
-                    query.AddCheckoutAttribute(new CheckoutAttributeQueryItem(attributeId, value));
+                    query.AddCheckoutAttribute(new CheckoutAttributeQueryItem
+                    {
+                        Value = value.EmptyNull(),
+                        AttributeId = attributeId
+                    });
                 }
             }
         }

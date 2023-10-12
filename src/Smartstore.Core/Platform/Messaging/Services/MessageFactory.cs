@@ -73,7 +73,7 @@ namespace Smartstore.Core.Messaging
 
         public virtual async Task<CreateMessageResult> CreateMessageAsync(MessageContext messageContext, bool queue, params object[] modelParts)
         {
-            Guard.NotNull(messageContext, nameof(messageContext));
+            Guard.NotNull(messageContext);
 
             modelParts ??= Array.Empty<object>();
 
@@ -148,9 +148,9 @@ namespace Smartstore.Core.Messaging
             {
                 Priority = 5,
                 From = messageContext.SenderMailAddress ?? messageContext.EmailAccount.ToMailAddress(),
-                To = to.ToString(),
+                To = string.Join(';', to.Select(x => x.ToString())),
                 Bcc = bcc,
-                ReplyTo = replyTo?.ToString(),
+                ReplyTo = replyTo == null ? null : string.Join(';', replyTo.Select(x => x.ToString())),
                 Subject = subject,
                 Body = body,
                 CreatedOnUtc = DateTime.UtcNow,
@@ -172,8 +172,8 @@ namespace Smartstore.Core.Messaging
 
         public virtual async Task QueueMessageAsync(MessageContext messageContext, QueuedEmail queuedEmail)
         {
-            Guard.NotNull(messageContext, nameof(messageContext));
-            Guard.NotNull(queuedEmail, nameof(queuedEmail));
+            Guard.NotNull(messageContext);
+            Guard.NotNull(queuedEmail);
 
             // Publish event so that integrators can add attachments, alter the email etc.
             await _eventPublisher.PublishAsync(new MessageQueuingEvent
@@ -187,7 +187,7 @@ namespace Smartstore.Core.Messaging
             await _db.SaveChangesAsync();
         }
 
-        private async Task<MailAddress> RenderEmailAddressAsync(string email, MessageContext ctx, bool required = true)
+        private async Task<List<MailAddress>> RenderEmailAddressAsync(string email, MessageContext ctx, bool required = true)
         {
             string parsed = null;
 
@@ -197,7 +197,13 @@ namespace Smartstore.Core.Messaging
 
                 if (required || parsed.HasValue())
                 {
-                    return parsed.Convert<MailAddress>();
+                    var parsedEmails = parsed
+                        .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(e => e.Convert<MailAddress>())
+                        .Where(e => e != null)
+                        .ToList();
+
+                    return parsedEmails;
                 }
                 else
                 {
@@ -208,7 +214,7 @@ namespace Smartstore.Core.Messaging
             {
                 if (ctx.TestMode)
                 {
-                    return new MailAddress("john@doe.com", "John Doe");
+                    return new() { new("john@doe.com", "John Doe") };
                 }
 
                 var ex2 = new InvalidOperationException($"Failed to parse email address for variable '{email}'. Value was '{parsed.EmptyNull()}': {ex.Message}", ex);
@@ -266,7 +272,9 @@ namespace Smartstore.Core.Messaging
                 // 'Store' is a global model part, so we pretty can be sure it exists.
                 baseUri = new Uri((string)model.Store.Url);
             }
-            catch { }
+            catch
+            {
+            }
 
             var pm = new PreMailer.Net.PreMailer(html, baseUri);
             var result = pm.MoveCssInline(true, "#ignore");
@@ -329,7 +337,7 @@ namespace Smartstore.Core.Messaging
 
             if (ctx.BaseUri == null)
             {
-                ctx.BaseUri = new Uri(ctx.Store.GetHost(true));
+                ctx.BaseUri = ctx.Store.GetBaseUri();
             }
 
             if (ctx.LanguageId.GetValueOrDefault() == 0)
@@ -404,12 +412,7 @@ namespace Smartstore.Core.Messaging
         {
             // Note that the email account to be used can be specified separately for each language, that's why we use GetLocalized here.
             var accountId = messageTemplate.GetLocalized(x => x.EmailAccountId, languageId);
-            var account = _db.EmailAccounts.AsNoTracking().FirstOrDefault(x => x.Id == accountId);
-
-            if (account == null)
-            {
-                account = _emailAccountService.GetDefaultEmailAccount();
-            }
+            var account = _db.EmailAccounts.FindById(accountId, false) ?? _emailAccountService.GetDefaultEmailAccount();
 
             if (account == null)
             {

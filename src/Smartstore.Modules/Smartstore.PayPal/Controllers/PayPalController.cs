@@ -8,10 +8,13 @@ using Newtonsoft.Json.Linq;
 using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Checkout.Cart;
 using Smartstore.Core.Checkout.Orders;
+using Smartstore.Core.Checkout.Payment;
 using Smartstore.Core.Data;
 using Smartstore.Core.Identity;
+using Smartstore.Core.Stores;
 using Smartstore.PayPal.Client;
 using Smartstore.PayPal.Client.Messages;
+using Smartstore.Utilities.Html;
 using Smartstore.Web.Controllers;
 
 namespace Smartstore.PayPal.Controllers
@@ -69,6 +72,26 @@ namespace Smartstore.PayPal.Controllers
                 // Store order id temporarily in checkout state.
                 checkoutState.CustomProperties["PayPalOrderId"] = orderId;
 
+                var paypalCheckoutState = checkoutState.GetCustomState<PayPalCheckoutState>();
+                paypalCheckoutState.PayPalOrderId = orderId;
+
+                var session = HttpContext.Session;
+
+                if (!session.TryGetObject<ProcessPaymentRequest>("OrderPaymentInfo", out var processPaymentRequest) || processPaymentRequest == null)
+                {
+                    processPaymentRequest = new ProcessPaymentRequest
+                    {
+                        OrderGuid = Guid.NewGuid()
+                    };
+                }
+
+                processPaymentRequest.PayPalOrderId = orderId;
+                processPaymentRequest.StoreId = Services.StoreContext.CurrentStore.Id;
+                processPaymentRequest.CustomerId = customer.Id;
+                processPaymentRequest.PaymentMethodSystemName = customer.GenericAttributes.SelectedPaymentMethod;
+
+                session.TrySetObject("OrderPaymentInfo", processPaymentRequest);
+
                 success = true;
             }
             else
@@ -80,14 +103,215 @@ namespace Smartstore.PayPal.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> CreateOrder()
+        public async Task<IActionResult> CreateOrder(string paymentSource)
         {
-            var orderMessage = await _client.GetOrderForStandardProviderAsync(true);
+            var orderMessage = await _client.GetOrderForStandardProviderAsync(isExpressCheckout: true);
             var response = await _client.CreateOrderAsync(orderMessage);
             var rawResponse = response.Body<object>().ToString();
             dynamic jResponse = JObject.Parse(rawResponse);
 
+            var selectedPaymentMethod = string.Empty;
+            switch (paymentSource)
+            {
+                case "paypal-creditcard-hosted-fields-container":
+                    selectedPaymentMethod = "Payments.PayPalCreditCard";
+                    break;
+                case "paypal-sepa-button-container":
+                    selectedPaymentMethod = "Payments.PayPalSepa";
+                    break;
+                case "paypal-paylater-button-container":
+                    selectedPaymentMethod = "Payments.PayPalPayLater";
+                    break;
+                case "paypal-button-container":
+                default:
+                    selectedPaymentMethod = "Payments.PayPalStandard";
+                    break;
+            }
+
+            Services.WorkContext.CurrentCustomer.GenericAttributes.SelectedPaymentMethod = selectedPaymentMethod;
+
             return Json(jResponse);
+        }
+
+        /// <summary>
+        /// Called by ajax from credit card hosted fields to get two letter country code by id.
+        /// </summary>
+        /// <param name="id">The id of the selected country</param>
+        /// <returns>ISO Code of the selected country</returns>
+        [HttpPost]
+        public async Task<IActionResult> GetCountryCodeById(int countryId)
+        {
+            var country = await _db.Countries.FindByIdAsync(countryId, false);
+            var code = country?.TwoLetterIsoCode;
+
+            return Json(code);
+        }
+
+        /// <summary>
+        /// AJAX
+        /// Called after buyer clicked buy-now-button but before the order was created.
+        /// Processes payment and return redirect URL if there is any.
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> ConfirmOrder(string formData)
+        {
+            string redirectUrl = null;
+            var messages = new List<string>();
+            var success = false;
+
+            try
+            {
+                var store = Services.StoreContext.CurrentStore;
+                var customer = Services.WorkContext.CurrentCustomer;
+
+                if (!HttpContext.Session.TryGetObject<ProcessPaymentRequest>("OrderPaymentInfo", out var paymentRequest) || paymentRequest == null)
+                {
+                    paymentRequest = new ProcessPaymentRequest();
+                }
+
+                await CreateOrderApmAsync(paymentRequest.OrderGuid.ToString());
+
+                var state = _checkoutStateAccessor.CheckoutState.GetCustomState<PayPalCheckoutState>();
+
+                paymentRequest.StoreId = store.Id;
+                paymentRequest.CustomerId = customer.Id;
+                paymentRequest.PaymentMethodSystemName = state.ApmProviderSystemName;
+
+                // We must check here if an order can be placed to avoid creating unauthorized transactions.
+                var (warnings, cart) = await _orderProcessingService.ValidateOrderPlacementAsync(paymentRequest);
+                if (warnings.Count == 0)
+                {
+                    if (await _orderProcessingService.IsMinimumOrderPlacementIntervalValidAsync(customer, store))
+                    {
+                        success = true;
+                        state.IsConfirmed = true;
+                        state.FormData = formData.EmptyNull();
+
+                        paymentRequest.PayPalOrderId = state.PayPalOrderId;
+
+                        HttpContext.Session.TrySetObject("OrderPaymentInfo", paymentRequest);
+
+                        redirectUrl = state.ApmRedirectActionUrl;
+                    }
+                    else
+                    {
+                        messages.Add(T("Checkout.MinOrderPlacementInterval"));
+                    }
+                }
+                else
+                {
+                    messages.AddRange(warnings.Select(HtmlUtility.ConvertPlainTextToHtml));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+                messages.Add(ex.Message);
+            }
+
+            return Json(new { success, redirectUrl, messages });
+        }
+
+        private async Task CreateOrderApmAsync(string orderGuid)
+        {
+            var orderMessage = await _client.GetOrderForStandardProviderAsync(orderGuid, true, true);
+            var checkoutState = _checkoutStateAccessor.CheckoutState.GetCustomState<PayPalCheckoutState>();
+
+            // Get values from checkout input fields which were saved in CheckoutState.
+            orderMessage.PaymentSource = GetPaymentSource(checkoutState);
+
+            orderMessage.AppContext.Locale = Services.WorkContext.WorkingLanguage.LanguageCulture;
+
+            // Get ReturnUrl & CancelUrl and add them to PayPalApplicationContext for proper redirection after payment was made or cancelled.
+            var store = Services.StoreContext.CurrentStore;
+            orderMessage.AppContext.ReturnUrl = store.GetAbsoluteUrl(Url.Action(nameof(RedirectionSuccess), "PayPal"));
+            orderMessage.AppContext.CancelUrl = store.GetAbsoluteUrl(Url.Action(nameof(RedirectionCancel), "PayPal"));
+
+            var response = await _client.CreateOrderAsync(orderMessage);
+            var rawResponse = response.Body<object>().ToString();
+            dynamic jResponse = JObject.Parse(rawResponse);
+
+            // Save redirect url in CheckoutState.
+            var status = (string)jResponse.status;
+            checkoutState.PayPalOrderId = (string)jResponse.id;
+            if (status == "PAYER_ACTION_REQUIRED")
+            {
+                var link = ((JObject)jResponse).SelectToken("links")
+                            .Where(t => t["rel"].Value<string>() == "payer-action")
+                            .First()["href"].Value<string>();
+
+                checkoutState.ApmRedirectActionUrl = link;
+            }
+        }
+
+        private PaymentSource GetPaymentSource(PayPalCheckoutState checkoutState)
+        {
+            var apmPaymentSource = new PaymentSourceApm
+            {
+                CountryCode = checkoutState.ApmCountryCode,
+                Name = checkoutState.ApmFullname
+            };
+
+            var paymentSource = new PaymentSource();
+
+            switch (checkoutState.ApmProviderSystemName)
+            {
+                case PayPalConstants.Giropay:
+                    paymentSource.PaymentSourceGiroPay = apmPaymentSource;
+                    break;
+                case PayPalConstants.Sofort:
+                    paymentSource.PaymentSourceSofort = apmPaymentSource;
+                    break;
+                case PayPalConstants.Bancontact:
+                    paymentSource.PaymentSourceBancontact = apmPaymentSource;
+                    break;
+                case PayPalConstants.Blik:
+                    paymentSource.PaymentSourceBlik = apmPaymentSource;
+                    break;
+                case PayPalConstants.Eps:
+                    paymentSource.PaymentSourceEps = apmPaymentSource;
+                    break;
+                case PayPalConstants.Ideal:
+                    paymentSource.PaymentSourceIdeal = apmPaymentSource;
+                    break;
+                case PayPalConstants.MyBank:
+                    paymentSource.PaymentSourceMyBank = apmPaymentSource;
+                    break;
+                case PayPalConstants.Przelewy24:
+                    paymentSource.PaymentSourceP24 = apmPaymentSource;
+                    apmPaymentSource.Email = checkoutState.ApmEmail;
+                    break;
+                default:
+                    break;
+            }
+
+            return paymentSource;
+        }
+
+        public IActionResult RedirectionSuccess()
+        {
+            var state = _checkoutStateAccessor.CheckoutState.GetCustomState<PayPalCheckoutState>();
+            if (state.PayPalOrderId != null)
+            {
+                state.SubmitForm = true;
+            }
+            else
+            {
+                _checkoutStateAccessor.CheckoutState.RemoveCustomState<PayPalCheckoutState>();
+                NotifyWarning(T("Payment.MissingCheckoutState", "PayPalCheckoutState." + nameof(state.PayPalOrderId)));
+
+                return RedirectToAction(nameof(CheckoutController.PaymentMethod), "Checkout");
+            }
+    
+            return RedirectToAction(nameof(CheckoutController.Confirm), "Checkout");
+        }
+
+        public IActionResult RedirectionCancel()
+        {
+            _checkoutStateAccessor.CheckoutState.RemoveCustomState<PayPalCheckoutState>();
+            NotifyWarning(T("Payment.PaymentFailure"));
+
+            return RedirectToAction(nameof(CheckoutController.PaymentMethod), "Checkout");
         }
 
         [HttpPost]
@@ -109,9 +333,20 @@ namespace Smartstore.PayPal.Controllers
                     var response = await VerifyWebhookRequest(Request, webhookEvent);
                     var resource = webhookEvent.Resource;
 
-                    var customId = resource?.CustomId ?? resource?.PurchaseUnits?[0]?.CustomId;
-                    
                     var webhookResourceType = webhookEvent.ResourceType?.ToLowerInvariant();
+
+                    // We only handle authorization, capture, refund, checkout-order & order webhooks.
+                    // checkout-order & order webhooks are used for APMs.
+                    if (webhookResourceType != "authorization"
+                        && webhookResourceType != "capture"
+                        && webhookResourceType != "refund"
+                        && webhookResourceType != "checkout-order"
+                        && webhookResourceType != "order")
+                    {
+                        return Ok();
+                    }
+
+                    var customId = resource?.CustomId ?? resource?.PurchaseUnits?[0]?.CustomId;
 
                     if (!Guid.TryParse(customId, out var orderGuid))
                     {
@@ -140,8 +375,12 @@ namespace Smartstore.PayPal.Controllers
                         case "refund":
                             await HandleRefundAsync(order, resource);
                             break;
+                        case "checkout-order":
+                        case "order":
+                            await HandleCheckoutOrderAsync(order, resource);
+                            break;
                         default:
-                            throw new IOException("Cannot proccess resource type.");
+                            throw new PayPalException("Cannot proccess resource type.");
                     };
 
                     // Update order.
@@ -214,12 +453,36 @@ namespace Smartstore.PayPal.Controllers
 
                 case "declined":
                     order.CaptureTransactionResult = status;
-                    order.OrderStatus = OrderStatus.Cancelled;
+                    order.PaymentStatus = PaymentStatus.Voided;
+                    await _orderProcessingService.CancelOrderAsync(order, true);
                     break;
 
                 case "refunded":
                     if (order.CanRefundOffline())
                         await _orderProcessingService.RefundOfflineAsync(order);
+                    break;
+            }
+        }
+
+        private async Task HandleCheckoutOrderAsync(Order order, WebhookResource resource)
+        {
+            var status = resource?.Status.ToLowerInvariant();
+            switch (status)
+            {
+                case "completed":
+                    if (decimal.TryParse(resource.Amount?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var capturedAmount))
+                    {
+                        if (order.CanMarkOrderAsPaid() && capturedAmount == Math.Round(order.OrderTotal, 2))
+                        {
+                            order.CaptureTransactionId = resource.Id;
+                            order.CaptureTransactionResult = status;
+                            await _orderProcessingService.MarkOrderAsPaidAsync(order);
+                        }
+                    }
+                    break;
+                case "voided":
+                    order.CaptureTransactionResult = status;
+                    await _orderProcessingService.VoidAsync(order);
                     break;
             }
         }
@@ -268,7 +531,7 @@ namespace Smartstore.PayPal.Controllers
             }
             else
             {
-                throw new IOException("Could not verify request.");
+                throw new PayPalException("Could not verify request.");
             }
         }
     }

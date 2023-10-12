@@ -17,7 +17,7 @@
 <link sm-target-zone="head_links" as="image" rel="preload" href="~/images/smartstore.svg" />
 
 <nav id="navbar" class="navbar navbar-slide navbar-dark navbar-expand">
-    <a class="navbar-brand mx-0 mr-3" asp-action="Index" asp-controller="Home" asp-area="Admin">
+    <a class="navbar-brand mx-0 mr-2 mr-sm-3" asp-action="Index" asp-controller="Home" asp-area="Admin">
         <img class="navbar-img d-none d-lg-block" src="~/images/smartstore.svg" alt="Smartstore" />
         <img class="navbar-img d-lg-none" src="~/images/smartstore-icon.svg" alt="Smartstore" />
     </a>
@@ -31,15 +31,15 @@
     <div class="collapse navbar-collapse ml-auto">
         <ul class="navbar-nav ml-auto">
             <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle navbar-tool" href="javascript:void(0)" title='@T("Admin.Common.Actions")' data-toggle="dropdown">
+                <a class="nav-link dropdown-toggle navbar-tool" href="javascript:;" title='@T("Admin.Common.Actions")' data-toggle="dropdown">
                     <i class="icm icm-cog navbar-icon"></i>
                 </a>
                 <div class="dropdown-menu dropdown-menu-right">
                     @foreach (var store in stores)
                     {
-                        <a class="dropdown-item" href="@store.Url" title="@T("Admin.Header.PublicStore") - @store.Name">
+                        <a class="dropdown-item" href="@store.GetBaseUrl()" title="@T("Admin.Header.PublicStore") - @store.Name">
                             <bootstrap-icon name="shop-window" class="bi-fw" />
-                            @store.Name.Truncate(32, "...")
+                            @store.Name.Truncate(32, "…")
                         </a>
                     }
                     <a class="dropdown-item" href='@Url.Action("Preview", "Theme")'>
@@ -47,11 +47,11 @@
                         @T("Admin.Configuration.Themes.PreviewMode")
                     </a>
                     <div class="dropdown-divider"></div>
-                    <a class="dropdown-item" id="clear-cache" href="#" data-url="@Url.Action("ClearCache", "Maintenance", new { area = "Admin" })">
+                    <a class="dropdown-item" id="clear-cache" href="javascript:;" data-url="@Url.Action("ClearCache", "Maintenance", new { area = "Admin", silent = true })">
                         <bootstrap-icon name="trash" class="bi-fw" />
                         @T("Admin.Header.ClearCache")
                     </a>
-                    <a class="dropdown-item" id="clear-database-cache" href="#" data-url="@Url.Action("ClearDatabaseCache", "Maintenance", new { area = "Admin" })">
+                    <a class="dropdown-item" id="clear-database-cache" href="javascript:;" data-url="@Url.Action("ClearDatabaseCache", "Maintenance", new { area = "Admin", silent = true })">
                         <i class="bi bi-fw"></i>
                         @T("Admin.Header.ClearDbCache")
                     </a>
@@ -66,7 +66,7 @@
             @await Component.InvokeAsync("AdminLanguageSelector")
 
             <li id="navtool-help" class="nav-item dropdown d-none d-md-block">
-                <a class="nav-link dropdown-toggle navbar-tool" href="javascript:void(0)" title='@T("Admin.Help")' data-toggle="dropdown">
+                <a class="nav-link dropdown-toggle navbar-tool" href="javascript:;" title='@T("Admin.Help")' data-toggle="dropdown">
                     <i class="icm icm-bubble-question navbar-icon"></i>
                     @if (checkUpdateResult != null && checkUpdateResult.UpdateAvailable)
                     {
@@ -121,18 +121,14 @@
 
 <script sm-target-zone="scripts" data-origin="admin-navbar">
     $(function () {
-		$("#clear-database-cache, #clear-cache").on('click', function (e) {
-            e.preventDefault();
-
+		$("#clear-database-cache, #clear-cache").on('click', function () {
             $({}).ajax({
-                url: $(e.target).data("url"),
+                url: $(this).data("url"),
+                global: false,
                 success: function (data) {
-					displayNotification(data.Message, 'success');
-					$(e.target).closest(".dropdown").dropdown('toggle');
+                    location.reload();
                 }
             });
-
-            return false;
         });
 
         // add mainmenu tooltips;

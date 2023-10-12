@@ -8,6 +8,7 @@ using Smartstore.Core.Messaging;
 using Smartstore.Core.Rules.Filters;
 using Smartstore.Core.Security;
 using Smartstore.Core.Stores;
+using Smartstore.Data.Caching;
 using Smartstore.Net.Mail;
 using Smartstore.Web.Models.DataGrid;
 
@@ -126,6 +127,7 @@ namespace Smartstore.Admin.Controllers
             var mapper = MapperFactory.GetMapper<EmailAccount, EmailAccountModel>();
             ViewBag.EmailAccounts = await _db.EmailAccounts
                 .AsNoTracking()
+                .AsNoCaching()
                 .SelectAwait(async x => await mapper.MapAsync(x))
                 .AsyncToList();
         }
@@ -163,6 +165,7 @@ namespace Smartstore.Admin.Controllers
 
             var messageTemplates = await query
                 .ApplyStoreFilter(model.SearchStoreId)
+                .OrderBy(x => x.Name)
                 .ApplyGridCommand(command)
                 .ToPagedList(command)
                 .LoadAsync();
@@ -347,8 +350,6 @@ namespace Smartstore.Admin.Controllers
                 model.Token = Guid.NewGuid().ToString();
                 model.BodyUrl = Url.Action("PreviewBody", new { token = model.Token });
 
-                // INFO: (mh) (core) Our hybrid cache does not support sliding or file expirations. Whenever you need expiration logic
-                // other than absolute expiration you need to switch over to native IMemoryCache.
                 using (var entry = _memCache.CreateEntry("mtpreview:" + model.Token))
                 {
                     entry.Value = model;

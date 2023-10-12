@@ -12,12 +12,11 @@ namespace Smartstore.Core.Seo
 
         public XmlSitemapBuildContext(Store store, Language[] languages, ISettingFactory settingFactory, bool isSingleStoreMode)
         {
-            Guard.NotNull(store, nameof(store));
-            Guard.NotEmpty(languages, nameof(languages));
+            Guard.NotNull(store);
+            Guard.NotEmpty(languages);
 
             Store = store;
             Languages = languages;
-            Protocol = store.SupportsHttps() && store.ForceSslForAllPages ? "https" : "http";
 
             _settingFactory = settingFactory;
             _isSingleStoreMode = isSingleStoreMode;
@@ -31,8 +30,6 @@ namespace Smartstore.Core.Seo
         public int RequestStoreId { get; init; }
         public Language[] Languages { get; init; }
         public int MaximumNodeCount { get; init; } = XmlSitemapGenerator.MaximumSiteMapNodeCount;
-
-        public string Protocol { get; init; }
 
         public T LoadSettings<T>() where T : ISettings, new()
         {

@@ -6,45 +6,51 @@
             </a>
             <div class="dg-tools-dropdown dropdown-menu dropdown-menu-right" v-on:click="$event.stopPropagation()">
                 <div class="dg-tools-group px-3 pt-1">
-                    <label class="d-flex align-items-center justify-content-between switcher-sm m-0">
+                    <label class="d-flex align-items-center justify-content-between m-0">
                         <span>{{ T.vborders }}</span>
-                        <label class="switch">
-                            <input type="checkbox" v-model="options.vborders">
-                            <span class="switch-toggle"></span>
-                        </label>
+                        <div class="form-check form-check-warning form-switch m-0">
+                            <input type="checkbox" class="form-check-input m-0" v-model="options.vborders">
+                        </div>
                     </label>
-                    <label class="d-flex align-items-center justify-content-between switcher-sm m-0">
+                    <label class="d-flex align-items-center justify-content-between m-0">
                         <span>{{ T.hborders }}</span>
-                        <label class="switch">
-                            <input type="checkbox" v-model="options.hborders">
-                            <span class="switch-toggle"></span>
-                        </label>
+                        <div class="form-check form-check-warning form-switch m-0">
+                            <input type="checkbox" class="form-check-input m-0" v-model="options.hborders">
+                        </div>
                     </label>
-                    <label class="d-flex align-items-center justify-content-between switcher-sm m-0">
+                    <label class="d-flex align-items-center justify-content-between m-0">
                         <span>{{ T.striped }}</span>
-                        <label class="switch">
-                            <input type="checkbox" v-model="options.striped">
-                            <span class="switch-toggle"></span>
-                        </label>
+                        <div class="form-check form-check-warning form-switch m-0">
+                            <input type="checkbox" class="form-check-input m-0" v-model="options.striped">
+                        </div>
                     </label>
-                    <label class="d-flex align-items-center justify-content-between switcher-sm m-0">
+                    <label class="d-flex align-items-center justify-content-between m-0">
                         <span>{{ T.hover }}</span>
-                        <label class="switch">
-                            <input type="checkbox" v-model="options.hover">
-                            <span class="switch-toggle"></span>
-                        </label>
+                        <div class="form-check form-check-warning form-switch m-0">
+                            <input type="checkbox" class="form-check-input m-0" v-model="options.hover">
+                        </div>
                     </label>
                     <label v-if="paging.enabled" class="d-flex align-items-center justify-content-between m-0">
                         <span>{{ T.pagerPos }}</span>
-                        <select class="form-control form-control-sm noskin w-auto px-1" v-model="paging.position">
+                        <select class="form-control form-control-sm noskin w-auto" v-model="paging.position">
                             <option value="top">{{ T.pagerTop }}</option>
                             <option value="bottom">{{ T.pagerBottom }}</option>
                             <option value="both">{{ T.pagerBoth }}</option>
                         </select>
                     </label>
-                    <button type="button" class="btn btn-sm btn-block btn-secondary mt-2" @click="$parent.$parent.resetState()">
-                        {{ T.resetState }}
-                    </button>
+                    <div class="row xs-gutters">
+                        <div class="col">
+                            <button type="button" class="btn btn-sm btn-block btn-secondary mt-2" @click="$parent.$parent.resetState()">
+                                <span>{{ T.resetState }}</span>
+                            </button>
+                        </div>
+                        <div class="col">
+                            <button type="button" class="btn btn-sm btn-block btn-secondary text-truncate mt-2" @click="$parent.$parent.autoSizeAllColumns()">
+                                <i class="fa fa-arrows-left-right-to-line"></i>
+                                <span>{{ T.fitColumns }}</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div class="dropdown-divider"></div>
                 <div class="dg-tools-group dg-tools-columns px-3 pb-1">

@@ -44,6 +44,7 @@
                         <span asp-validation-for="StoreInformationSettings.StoreClosedAllowForAdmins"></span>
                     </div>
                 </div>
+
                 <div class="adminRow">
                     <div class="admin-config-group">
                         <div class="title">@T("Admin.Configuration.Settings.CustomerUser.DateTimeSettings")</div>
@@ -67,6 +68,23 @@
                     <div class="adminData">
                         <setting-editor asp-for="DateTimeSettings.AllowCustomersToSetTimeZone"></setting-editor>
                         <span asp-validation-for="DateTimeSettings.AllowCustomersToSetTimeZone"></span>
+                    </div>
+                </div>
+
+                <div class="adminRow">
+                    <div class="admin-config-group">
+                        <div class="title">@T("Admin.Configuration.EmailAccounts")</div>
+                    </div>
+                </div>
+                <div class="adminRow">
+                    <div class="adminTitle">
+                        <smart-label asp-for="EmailAccountSettings.DefaultEmailAccountId" />
+                    </div>
+                    <div class="adminData">
+                        <setting-editor asp-for="EmailAccountSettings.DefaultEmailAccountId">
+                            <select asp-for="EmailAccountSettings.DefaultEmailAccountId" asp-items="ViewBag.EmailAccounts"></select>
+                        </setting-editor>
+                        <span asp-validation-for="EmailAccountSettings.DefaultEmailAccountId"></span>
                     </div>
                 </div>
             </div>
@@ -102,35 +120,64 @@
                         <span asp-validation-for="SeoSettings.CanonicalHostNameRule"></span>
                     </div>
                 </div>
-                <div class="robots-container adminRow">
+                <div class="robots-container display-allows adminRow">
                     <div class="adminTitle">
-                        <smart-label asp-for="SeoSettings.ExtraRobotsDisallows" />
+                        <smart-label asp-for="SeoSettings.ExtraRobotsLines" />
+                        <div class="text-muted pr-2">
+                            @T("Admin.Configuration.Settings.GeneralCommon.RobotsHint")
+                        </div>
                     </div>
                     <div class="adminData">
-                        <editor asp-for="SeoSettings.ExtraRobotsDisallows" />
-                        <span asp-validation-for="SeoSettings.ExtraRobotsDisallows"></span>
+                        <nav class="nav nav-segmented nav-justified">
+                            <a class="nav-link active" data-toggle="tab" href="#robots-allows">@T("Admin.Configuration.Settings.GeneralCommon.DisplayAllows")</a>
+                            <a class="nav-link" data-toggle="tab" href="#robots-disallows">@T("Admin.Configuration.Settings.GeneralCommon.DisplayDisallows")</a>
+                            <a class="nav-link" data-toggle="tab" href="#robots-additional-lines">@T("Admin.Configuration.Settings.GeneralCommon.DisplayAdditionalLines")</a>
+                        </nav>
+                        <div class="tab-content">
+                            <div id="robots-allows" class="tab-pane active">
+                                <editor asp-for="SeoSettings.ExtraRobotsAllows" />
+                                <span asp-validation-for="SeoSettings.ExtraRobotsAllows"></span>
+                            </div>
+                            <div id="robots-disallows" class="tab-pane">
+                                <editor asp-for="SeoSettings.ExtraRobotsDisallows" />
+                                <span asp-validation-for="SeoSettings.ExtraRobotsDisallows"></span>
+                            </div>
+                            <div id="robots-additional-lines" class="tab-pane">
+                                <editor asp-for="SeoSettings.ExtraRobotsLines" />
+                                <span asp-validation-for="SeoSettings.ExtraRobotsLines"></span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="robots-container d-none adminRow">
-                    <div class="adminTitle">
-                        <smart-label asp-for="SeoSettings.ExtraRobotsAllows" />
+                
+                <div class="adminRow">
+                    <div class="admin-config-group">
+                        <div class="title">@T("Admin.Configuration.Settings.GeneralCommon.SEOSettings.Routing")</div>
                     </div>
-                    <div class="adminData">
-                        <editor asp-for="SeoSettings.ExtraRobotsAllows" />
-                        <span asp-validation-for="SeoSettings.ExtraRobotsAllows"></span>
+                </div>
+                <div class="adminRow">
+                    <div class="alert alert-warning w-100">
+                        @T("Admin.Configuration.Settings.GeneralCommon.SEOSettings.RestartInfo")
                     </div>
                 </div>
                 <div class="adminRow">
                     <div class="adminTitle">
+                        <smart-label asp-for="SeoSettings.AppendTrailingSlashToUrls" />
                     </div>
                     <div class="adminData">
-                        <button type="button" class="btn btn-secondary robots-toggle-button">
-                            <i class="fa fa-exchange-alt"></i>
-                            <span>@T("Admin.Configuration.Settings.GeneralCommon.DisplayAllows")</span>
-                            <span class="d-none">@T("Admin.Configuration.Settings.GeneralCommon.DisplayDisallows")</span>
-                        </button>
+                        <input asp-for="SeoSettings.AppendTrailingSlashToUrls" />
                     </div>
                 </div>
+                <div class="adminRow">
+                    <div class="adminTitle">
+                        <smart-label asp-for="SeoSettings.TrailingSlashRule" />
+                    </div>
+                    <div class="adminData">
+                        <editor asp-for="SeoSettings.TrailingSlashRule" />
+                        <span asp-validation-for="SeoSettings.TrailingSlashRule"></span>
+                    </div>
+                </div>
+
                 <div class="adminRow">
                     <div class="admin-config-group">
                         <div class="title">@T("Admin.System.MetaInfos")</div>
@@ -199,10 +246,12 @@
                     <div class="adminData">
                         <div class="input-group">
                             <editor asp-for="SeoSettings.TestSeoNameCreation" />
-                            <button id="TestSeoNameCreationButton" type="button" class="btn btn-outline-secondary input-group-append rounded-0 align-items-center">
-                                <i class="fa fa-sync"></i>
-                                <span>@T("Admin.Common.Check")</span>
-                            </button>
+                            <span class="input-group-append">
+                                <button id="TestSeoNameCreationButton" type="button" class="btn btn-secondary">
+                                    <i class="fa fa-sync"></i>
+                                    <span>@T("Admin.Common.Check")</span>
+                                </button>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -303,9 +352,11 @@
                     <div class="adminData">
                         <div class="input-group">
                             <editor asp-for="SecuritySettings.EncryptionKey" />
-                            <button type="submit" name="changeencryptionkey" id="changeencryptionkey" value="changeencryptionkey" class="btn btn-outline-secondary input-group-append rounded-0 confirm">
-                                <span>@T("Admin.Common.Change")</span>
-                            </button>
+                            <span class="input-group-append">
+                                <button type="submit" name="changeencryptionkey" id="changeencryptionkey" value="changeencryptionkey" class="btn btn-secondary confirm">
+                                    <span>@T("Admin.Common.Change")</span>
+                                </button>
+                            </span>
                         </div>
                         <span asp-validation-for="SecuritySettings.EncryptionKey"></span>
                     </div>
@@ -942,13 +993,23 @@
                     </div>
                     <div class="adminRow">
                         <div class="adminTitle">
-                            <smart-label asp-for="SocialSettings.PinterestLink" />
+                            <smart-label asp-for="SocialSettings.InstagramLink" />
                         </div>
                         <div class="adminData">
-                            <setting-editor asp-for="SocialSettings.PinterestLink"></setting-editor>
-                            <span asp-validation-for="SocialSettings.PinterestLink"></span>
+                            <setting-editor asp-for="SocialSettings.InstagramLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.InstagramLink"></span>
                         </div>
                     </div>
+                    <div class="adminRow">
+                        <div class="adminTitle">
+                            <smart-label asp-for="SocialSettings.TikTokLink" />
+                        </div>
+                        <div class="adminData">
+                            <setting-editor asp-for="SocialSettings.TikTokLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.TikTokLink"></span>
+                        </div>
+                    </div>
+
                     <div class="adminRow">
                         <div class="adminTitle">
                             <smart-label asp-for="SocialSettings.YoutubeLink" />
@@ -960,11 +1021,84 @@
                     </div>
                     <div class="adminRow">
                         <div class="adminTitle">
-                            <smart-label asp-for="SocialSettings.InstagramLink" />
+                            <smart-label asp-for="SocialSettings.VimeoLink" />
                         </div>
                         <div class="adminData">
-                            <setting-editor asp-for="SocialSettings.InstagramLink"></setting-editor>
-                            <span asp-validation-for="SocialSettings.InstagramLink"></span>
+                            <setting-editor asp-for="SocialSettings.VimeoLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.VimeoLink"></span>
+                        </div>
+                    </div>
+
+                    <div class="adminRow">
+                        <div class="adminTitle">
+                            <smart-label asp-for="SocialSettings.PinterestLink" />
+                        </div>
+                        <div class="adminData">
+                            <setting-editor asp-for="SocialSettings.PinterestLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.PinterestLink"></span>
+                        </div>
+                    </div>
+                    <div class="adminRow">
+                        <div class="adminTitle">
+                            <smart-label asp-for="SocialSettings.SnapchatLink" />
+                        </div>
+                        <div class="adminData">
+                            <setting-editor asp-for="SocialSettings.SnapchatLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.SnapchatLink"></span>
+                        </div>
+                    </div>
+                    <div class="adminRow">
+                        <div class="adminTitle">
+                            <smart-label asp-for="SocialSettings.FlickrLink" />
+                        </div>
+                        <div class="adminData">
+                            <setting-editor asp-for="SocialSettings.FlickrLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.FlickrLink"></span>
+                        </div>
+                    </div>
+                    <div class="adminRow">
+                        <div class="adminTitle">
+                            <smart-label asp-for="SocialSettings.LinkedInLink" />
+                        </div>
+                        <div class="adminData">
+                            <setting-editor asp-for="SocialSettings.LinkedInLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.LinkedInLink"></span>
+                        </div>
+                    </div>
+                    <div class="adminRow">
+                        <div class="adminTitle">
+                            <smart-label asp-for="SocialSettings.XingLink" />
+                        </div>
+                        <div class="adminData">
+                            <setting-editor asp-for="SocialSettings.XingLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.XingLink"></span>
+                        </div>
+                    </div>
+                    <div class="adminRow">
+                        <div class="adminTitle">
+                            <smart-label asp-for="SocialSettings.TumblrLink" />
+                        </div>
+                        <div class="adminData">
+                            <setting-editor asp-for="SocialSettings.TumblrLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.TumblrLink"></span>
+                        </div>
+                    </div>
+                    <div class="adminRow">
+                        <div class="adminTitle">
+                            <smart-label asp-for="SocialSettings.ElloLink" />
+                        </div>
+                        <div class="adminData">
+                            <setting-editor asp-for="SocialSettings.ElloLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.ElloLink"></span>
+                        </div>
+                    </div>
+                    <div class="adminRow">
+                        <div class="adminTitle">
+                            <smart-label asp-for="SocialSettings.BehanceLink" />
+                        </div>
+                        <div class="adminData">
+                            <setting-editor asp-for="SocialSettings.BehanceLink"></setting-editor>
+                            <span asp-validation-for="SocialSettings.BehanceLink"></span>
                         </div>
                     </div>
                 </div>
@@ -993,11 +1127,6 @@
             if (!_.isEmpty(publicKey) && !_.isEmpty(privateKey)) {
                 $('#UseInvisibleReCaptchaWarning').removeClass('d-none');
             }
-        });
-
-        // Toggle robots settings for allow & disallow.
-        $('.robots-toggle-button').click(function () {
-            $('.robots-container, .robots-toggle-button > span').toggleClass("d-none");
         });
 	});
 </script>

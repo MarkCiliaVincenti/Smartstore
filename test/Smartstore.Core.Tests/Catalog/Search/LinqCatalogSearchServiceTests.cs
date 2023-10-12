@@ -11,6 +11,7 @@ using Smartstore.Core.Catalog.Categories;
 using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Catalog.Search;
 using Smartstore.Core.Common;
+using Smartstore.Core.Localization;
 using Smartstore.Core.Search;
 using Smartstore.Core.Security;
 using Smartstore.Core.Stores;
@@ -23,24 +24,44 @@ namespace Smartstore.Core.Tests.Catalog.Search
         private LinqCatalogSearchService _linqCatalogSearchService;
         private MockCommonServices _services;
 
-        private async Task InitTestDataAsync(IEnumerable<Product> products)
+        private async Task InitTestDataAsync(
+            IEnumerable<Product> products, 
+            IEnumerable<Category> categories = null,
+            IEnumerable<LocalizedProperty> translations = null)
         {
             DbContext.StoreMappings.RemoveRange(DbContext.StoreMappings);
             DbContext.AclRecords.RemoveRange(DbContext.AclRecords);
+            DbContext.Categories.RemoveRange(DbContext.Categories);
             DbContext.Products.RemoveRange(DbContext.Products);
+            DbContext.Languages.RemoveRange(DbContext.Languages);
+            DbContext.LocalizedProperties.RemoveRange(DbContext.LocalizedProperties);
             await DbContext.SaveChangesAsync();
 
-            DbContext.StoreMappings.AddRange(new StoreMapping { Id = 1, StoreId = 3, EntityName = "Product", EntityId = 99 });
-            DbContext.AclRecords.AddRange(new AclRecord { Id = 1, CustomerRoleId = 3, EntityName = "Product", EntityId = 99 });
+            DbContext.StoreMappings.Add(new StoreMapping { Id = 1, StoreId = 3, EntityName = "Product", EntityId = 99 });
+            DbContext.AclRecords.Add(new AclRecord { Id = 1, CustomerRoleId = 3, EntityName = "Product", EntityId = 99 });
+            DbContext.Languages.Add(new Language { Id = 1, Name = "Deutsch", LanguageCulture = "de-DE", UniqueSeoCode = "de", Published = true });
+
+            if (categories != null)
+            {
+                DbContext.Categories.AddRange(categories);
+            }
+            if (translations != null)
+            {
+                DbContext.LocalizedProperties.AddRange(translations);
+            }
+
             DbContext.Products.AddRange(products);
             await DbContext.SaveChangesAsync();
         }
 
-        private async Task<CatalogSearchResult> SearchAsync(CatalogSearchQuery query, IEnumerable<Product> products)
+        private async Task<CatalogSearchResult> SearchAsync(
+            CatalogSearchQuery query,
+            IEnumerable<Product> products,
+            IEnumerable<Category> categories = null)
         {
             Trace.WriteLine(query.ToString());
 
-            await InitTestDataAsync(products);
+            await InitTestDataAsync(products, categories);
 
             return await _linqCatalogSearchService.SearchAsync(query);
         }
@@ -52,7 +73,11 @@ namespace Smartstore.Core.Tests.Catalog.Search
 
             _services = new MockCommonServices(DbContext, builder.Build());
 
-            _linqCatalogSearchService = new LinqCatalogSearchService(DbContext, _services, It.IsAny<ICategoryService>());
+            _linqCatalogSearchService = new LinqCatalogSearchService(
+                DbContext,
+                new[] { new CatalogSearchQueryVisitor() },
+                _services, 
+                It.IsAny<ICategoryService>());
         }
 
         [Test]
@@ -108,20 +133,40 @@ namespace Smartstore.Core.Tests.Catalog.Search
             Assert.That(result.SpellCheckerSuggestions.Any(), Is.EqualTo(false));
         }
 
-        [Test]
-        public async Task LinqSearch_find_term()
+        [TestCase(3, "Smart")]
+        [TestCase(4, "Smart", SearchMode.Contains, 1)]
+        public async Task LinqSearch_find_term(int hits, string term, SearchMode mode = SearchMode.Contains, int languageId = 0)
         {
             var products = new List<Product>
             {
                 new SearchProduct(1) { Name = "Smartstore" },
                 new SearchProduct(2) { Name = "Apple iPhone Smartphone 6" },
                 new SearchProduct(3) { Name = "Energistically recaptiualize superior e-markets without next-generation platforms" },
-                new SearchProduct(4) { Name = "Rapidiously conceptualize future-proof imperatives", ShortDescription = "Shopping System powered by Smartstore" }
+                new SearchProduct(4) { Name = "Rapidiously conceptualize future-proof imperatives", ShortDescription = "Shopping System powered by Smartstore" },
+                new SearchProduct(5) { Name = "Enthusiastically pursue leading-edge e-tailers with worldwide schemas", ShortDescription = "Authoritatively evisculate open-source after interdependent data." },
             };
 
-            var result = await SearchAsync(new CatalogSearchQuery(new string[] { "name", "shortdescription" }, "Smart", SearchMode.Contains), products);
+            List<LocalizedProperty> translations = null;
+            if (languageId > 0)
+            {
+                translations = new List<LocalizedProperty>
+                {
+                    new() { LocaleKeyGroup = "Product", LocaleKey = "Name", EntityId = 5, LocaleValue = "Holisticly leadership extensible for Smartstore pontificate.", LanguageId = languageId }
+                };
+            }
 
-            Assert.That(result.TotalHitsCount, Is.EqualTo(3));
+            await InitTestDataAsync(products, null, translations);
+
+            var query = new CatalogSearchQuery(new[] { "name", "shortdescription" }, term, mode);
+            if (languageId > 0)
+            {
+                query = query.WithLanguage(await DbContext.Languages.FindByIdAsync(languageId));
+            }
+
+            Trace.WriteLine(query.ToString());
+
+            var result = await _linqCatalogSearchService.SearchAsync(query);
+            Assert.That(result.TotalHitsCount, Is.EqualTo(hits));
         }
 
         [Test]
@@ -313,14 +358,14 @@ namespace Smartstore.Core.Tests.Catalog.Search
         {
             var products = new List<Product>
             {
-                new SearchProduct(new ProductCategory[] { new ProductCategory { CategoryId = 11 } }) { Id = 1 },
-                new SearchProduct(new ProductCategory[] { new ProductCategory { CategoryId = 12, IsFeaturedProduct = true } }) { Id = 2 },
-                new SearchProduct(new ProductCategory[] { new ProductCategory { CategoryId = 13 } }) { Id = 3 },
-                new SearchProduct(new ProductCategory[] { new ProductCategory { CategoryId = 14 } }) { Id = 4 },
-                new SearchProduct(new ProductCategory[] { new ProductCategory { CategoryId = 15 } }) { Id = 5 },
-                new SearchProduct(new ProductCategory[] { new ProductCategory { CategoryId = 16, IsFeaturedProduct = true } }) { Id = 6 },
-                new SearchProduct(new ProductCategory[] { new ProductCategory { CategoryId = 17 } }) { Id = 7 },
-                new SearchProduct(new ProductCategory[] { new ProductCategory { CategoryId = 18 } }) { Id = 8 }
+                new SearchProduct(new ProductCategory[] { new() { CategoryId = 11 } }) { Id = 1 },
+                new SearchProduct(new ProductCategory[] { new() { CategoryId = 12, IsFeaturedProduct = true } }) { Id = 2 },
+                new SearchProduct(new ProductCategory[] { new() { CategoryId = 13 } }) { Id = 3 },
+                new SearchProduct(new ProductCategory[] { new() { CategoryId = 14 } }) { Id = 4 },
+                new SearchProduct(new ProductCategory[] { new() { CategoryId = 15 } }) { Id = 5 },
+                new SearchProduct(new ProductCategory[] { new() { CategoryId = 16, IsFeaturedProduct = true } }) { Id = 6 },
+                new SearchProduct(new ProductCategory[] { new() { CategoryId = 17 } }) { Id = 7 },
+                new SearchProduct(new ProductCategory[] { new() { CategoryId = 18 } }) { Id = 8 }
             };
 
             var result = await SearchAsync(new CatalogSearchQuery().WithCategoryIds(null, 68, 98), products);
@@ -334,6 +379,50 @@ namespace Smartstore.Core.Tests.Catalog.Search
 
             result = await SearchAsync(new CatalogSearchQuery().WithCategoryIds(false, 12, 15, 18, 24), products);
             Assert.That(result.TotalHitsCount, Is.EqualTo(2));
+        }
+
+        [TestCase(4, "/1/11/")]
+        [TestCase(3, "/2/21/")]
+        [TestCase(7, "/2/")]
+        [TestCase(3, "/2/", true)]
+        [TestCase(4, "/2/", false)]
+        [TestCase(6, "/2/", null, false)]
+        [TestCase(1, "/2/21/", true, false)]
+        public async Task LinqSearch_filter_with_category_treepath(int hits, string treePath, bool? featuredOnly = null, bool includeSelf = true)
+        {
+            var idCount = 9999;
+            var categories = new List<Category>();
+            var products = new List<Product>();
+
+            var treePaths = new string[]
+            {
+                "/1/",
+                "/1/11/", "/1/11/111/", "/1/11/112/", "/1/11/113/",
+                "/1/12/", "/1/12/121/",
+
+                "/2/",
+                "/2/21/", "/2/21/211/", "/2/21/212/",
+                "/2/22/",
+                "/2/23/",
+                "/2/24/",
+
+                "/3/",
+            };
+
+            foreach (var path in treePaths)
+            {
+                var categoryId = path.TrimEnd('/').SplitSafe('/').LastOrDefault().ToInt();
+                var pc = new ProductCategory[]
+                {
+                    new() { CategoryId = categoryId, IsFeaturedProduct = path == "/2/21/211/" || path == "/2/23/" || path == "/2/21/" }
+                };
+
+                categories.Add(new() { Id = categoryId, TreePath = path, Name = $"Category {categoryId}" });
+                products.Add(new SearchProduct(pc) { Id = ++idCount });
+            }
+
+            var result = await SearchAsync(new CatalogSearchQuery().WithCategoryTreePath(treePath, featuredOnly, includeSelf), products, categories);
+            Assert.That(result.TotalHitsCount, Is.EqualTo(hits));
         }
 
         [Test]
@@ -481,10 +570,10 @@ namespace Smartstore.Core.Tests.Catalog.Search
 
             var eur = new Currency { CurrencyCode = "EUR" };
 
-            var money100 = new Money(100M, eur);
-            var money200 = new Money(200M, eur);
-            var money14_90 = new Money(14.90M, eur);
-            var money59_90 = new Money(59.90M, eur);
+            var money100 = 100M;
+            var money200 = 200M;
+            var money14_90 = 14.90M;
+            var money59_90 = 59.90M;
 
             var result = await SearchAsync(new CatalogSearchQuery().WithCurrency(eur).PriceBetween(money100, money200), products);
             Assert.That(result.TotalHitsCount, Is.EqualTo(1));
@@ -553,7 +642,7 @@ namespace Smartstore.Core.Tests.Catalog.Search
                 {
                     StockQuantity = 0,
                     ManageInventoryMethod = ManageInventoryMethod.ManageStock,
-                    BackorderMode = BackorderMode.AllowQtyBelow0AndNotifyCustomer
+                    BackorderMode = BackorderMode.AllowQtyBelow0OnBackorder
                 }
             };
 
@@ -670,11 +759,10 @@ namespace Smartstore.Core.Tests.Catalog.Search
                 ICollection<ProductManufacturer> manufacturers,
                 ICollection<ProductTag> tags)
             {
-                Id = id == 0 ? (new Random()).Next(100, int.MaxValue) : id;
+                Id = id == 0 ? new Random().Next(100, int.MaxValue) : id;
                 ProductCategories.AddRange(categories ?? new HashSet<ProductCategory>());
                 ProductManufacturers.AddRange(manufacturers ?? new HashSet<ProductManufacturer>());
                 ProductTags.AddRange(tags ?? new HashSet<ProductTag>());
-
 
                 Name = "Holisticly implement optimal web services";
                 ShortDescription = "Continually synthesize fully researched benefits with granular benefits.";

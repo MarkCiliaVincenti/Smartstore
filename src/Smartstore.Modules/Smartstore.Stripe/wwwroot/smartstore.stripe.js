@@ -5,12 +5,12 @@
     const paymentRequestButtonId = "stripe-payment-request-button";
     const paymentRequestButtonSelector = "#" + paymentRequestButtonId;
     const paymentElementSelector = "#stripe-payment-element";
-    const moduleSystemName = "Smartstore.StripeElements";
+    const moduleSystemName = "Payments.StripeElements";
 
     return {
-        initPaymentElement: function (publicApiKey, secret) {
+        initPaymentElement: function (publicApiKey, secret, apiVersion) {
             stripe = Stripe(publicApiKey, {
-                apiVersion: "2022-08-01",
+                apiVersion: apiVersion,
                 betas: ['elements_enable_deferred_intent_beta_1'],
             });
 
@@ -80,9 +80,9 @@
                 }
             });
         },
-        initWalletButtonElement: function (publicApiKey, requestData) {
+        initWalletButtonElement: function (publicApiKey, requestData, apiVersion) {
             stripe = Stripe(publicApiKey, {
-                apiVersion: "2022-08-01",
+                apiVersion: apiVersion,
             });
 
             const paymentRequest = stripe.paymentRequest(requestData);

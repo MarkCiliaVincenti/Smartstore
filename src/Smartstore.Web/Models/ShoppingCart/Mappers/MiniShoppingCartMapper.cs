@@ -80,8 +80,8 @@ namespace Smartstore.Web.Models.Cart
 
         public override async Task MapAsync(ShoppingCart from, MiniShoppingCartModel to, dynamic parameters = null)
         {
-            Guard.NotNull(from, nameof(from));
-            Guard.NotNull(to, nameof(to));
+            Guard.NotNull(from);
+            Guard.NotNull(to);
 
             var customer = _services.WorkContext.CurrentCustomer;
             var store = _services.StoreContext.CurrentStore;
@@ -130,23 +130,17 @@ namespace Smartstore.Web.Models.Cart
                     ProductName = product.GetLocalized(x => x.Name),
                     ShortDesc = product.GetLocalized(x => x.ShortDescription),
                     ProductSeName = productSeName,
-                    EnteredQuantity = item.Quantity,
-                    MaxOrderAmount = product.OrderMaximumQuantity,
-                    MinOrderAmount = product.OrderMinimumQuantity,
-                    QuantityStep = product.QuantityStep > 0 ? product.QuantityStep : 1,
                     CreatedOnUtc = item.UpdatedOnUtc,
                     ProductUrl = await _productUrlHelper.GetProductUrlAsync(productSeName, cartItem),
-                    QuantityUnitName = null,
                     AttributeInfo = await _productAttributeFormatter.FormatAttributesAsync(
                         item.AttributeSelection,
                         product,
+                        new ProductAttributeFormatOptions { FormatTemplate = "<b>{0}:</b> <span>{1}</span>", ItemSeparator = Environment.NewLine, IncludePrices = false, IncludeHyperlinks = false, IncludeGiftCardAttributes = false },
                         null,
-                        ", ",
-                        includePrices: false,
-                        includeGiftCardAttributes: false,
-                        includeHyperlinks: false,
                         batchContext: batchContext)
                 };
+
+                await cartItem.MapQuantityInputAsync(cartItemModel, mapUnitName: false);
 
                 if (cartItem.ChildItems != null && _shoppingCartSettings.ShowProductBundleImagesOnShoppingCart)
                 {
@@ -193,7 +187,7 @@ namespace Smartstore.Web.Models.Cart
                 // Unit prices.
                 if (product.CallForPrice)
                 {
-                    cartItemModel.UnitPrice = cartItemModel.UnitPrice.WithPostFormat(T("Products.CallForPrice"));
+                    cartItemModel.UnitPrice = new(0, currency, false, T("Products.CallForPrice"));
                 }
                 else if (lineItems.TryGetValue(item.Id, out var lineItem))
                 {

@@ -22,6 +22,25 @@ namespace Smartstore.Web.Controllers
 
         public ICommonServices Services { get; set; } = default!;
 
+        #region Results
+
+        /// <summary>
+        /// Returns <see cref="ForbidResult"/> when the user is authenticated
+        /// or <see cref="ChallengeResult"/> when the user is not authenticated.
+        /// </summary>
+        protected ActionResult ChallengeOrForbid()
+            => User?.Identity?.IsAuthenticated == true ? Forbid() : Challenge();
+
+        /// <summary>
+        /// Returns <see cref="ForbidResult"/> when the user is authenticated
+        /// or <see cref="ChallengeResult"/> when the user is not authenticated.
+        /// </summary>
+        /// <param name="authenticationSchemes">The authentication schemes to challenge.</param>
+        protected ActionResult ChallengeOrForbid(params string[] authenticationSchemes)
+            => User?.Identity?.IsAuthenticated == true ? Forbid(authenticationSchemes) : Challenge(authenticationSchemes);
+
+        #endregion
+
         #region Widget, View & Component rendering
 
         /// <summary>
@@ -32,8 +51,7 @@ namespace Smartstore.Web.Controllers
         /// <returns>View rendering result</returns>
         protected Task<string> InvokeViewAsync(string viewName, object? model)
         {
-            Guard.NotEmpty(viewName, nameof(viewName));
-
+            Guard.NotEmpty(viewName);
             return InvokeWidget(null, new PartialViewWidget(viewName, model) { IsMainPage = true });
         }
 
@@ -45,8 +63,7 @@ namespace Smartstore.Web.Controllers
         /// <returns>View rendering result</returns>
         protected Task<string> InvokeViewAsync(string viewName, ViewDataDictionary? viewData)
         {
-            Guard.NotEmpty(viewName, nameof(viewName));
-
+            Guard.NotEmpty(viewName);
             return InvokeWidget(viewData, new PartialViewWidget(viewName) { IsMainPage = true });
         }
 
@@ -59,8 +76,7 @@ namespace Smartstore.Web.Controllers
         /// <returns>View rendering result</returns>
         protected Task<string> InvokeViewAsync(string viewName, object? model, object? additionalViewData)
         {
-            Guard.NotEmpty(viewName, nameof(viewName));
-
+            Guard.NotEmpty(viewName);
             return InvokeWidget(GetViewData(additionalViewData), new PartialViewWidget(viewName, model) { IsMainPage = true });
         }
 
@@ -73,8 +89,7 @@ namespace Smartstore.Web.Controllers
         /// <returns>View rendering result</returns>
         protected Task<string> InvokePartialViewAsync(string viewName, object? model)
         {
-            Guard.NotEmpty(viewName, nameof(viewName));
-
+            Guard.NotEmpty(viewName);
             return InvokeWidget(null, new PartialViewWidget(viewName, model));
         }
 
@@ -86,8 +101,7 @@ namespace Smartstore.Web.Controllers
         /// <returns>View rendering result</returns>
         protected Task<string> InvokePartialViewAsync(string viewName, ViewDataDictionary? viewData)
         {
-            Guard.NotEmpty(viewName, nameof(viewName));
-
+            Guard.NotEmpty(viewName);
             return InvokeWidget(viewData, new PartialViewWidget(viewName));
         }
 
@@ -100,8 +114,7 @@ namespace Smartstore.Web.Controllers
         /// <returns>View rendering result</returns>
         protected Task<string> InvokePartialViewAsync(string viewName, object? model, object? additionalViewData)
         {
-            Guard.NotEmpty(viewName, nameof(viewName));
-
+            Guard.NotEmpty(viewName);
             return InvokeWidget(GetViewData(additionalViewData), new PartialViewWidget(viewName, model));
         }
 
@@ -119,8 +132,7 @@ namespace Smartstore.Web.Controllers
         /// <returns>View component rendering result</returns>
         protected Task<string> InvokeComponentAsync(string componentName, ViewDataDictionary? viewData, object? arguments)
         {
-            Guard.NotEmpty(componentName, nameof(componentName));
-            
+            Guard.NotEmpty(componentName);
             return InvokeWidget(viewData, new ComponentWidget(componentName, arguments));
         }
 
@@ -137,8 +149,7 @@ namespace Smartstore.Web.Controllers
         /// <returns>View component rendering result</returns>
         protected Task<string> InvokeComponentAsync(Type componentType, ViewDataDictionary? viewData, object? arguments)
         {
-            Guard.NotNull(componentType, nameof(componentType));
-
+            Guard.NotNull(componentType);
             return InvokeWidget(viewData, new ComponentWidget(componentType, arguments));
         }
 

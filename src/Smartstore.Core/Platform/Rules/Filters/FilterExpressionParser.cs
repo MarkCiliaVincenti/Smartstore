@@ -7,6 +7,7 @@ namespace Smartstore.Core.Rules.Filters
 {
     public static class FilterExpressionParser
     {
+        static readonly char[] _wildcardChars = new[] { '*', '?' };
         static readonly Parser<List<FilterExpression>> Grammar;
 
         #region Tokens
@@ -76,15 +77,17 @@ namespace Smartstore.Core.Rules.Filters
                 // Create FilterExpression result
                 .Then(x =>
                 {
-                    var term = x.Item2.ToString();
-                    var op = ConvertOperator(x.Item1.ToString(), term);
+                    // Item1: Operator
+                    // Item2: Term
+                    // Item3: Combinator
+                    var op = ConvertOperator(x.Item1.ToString(), x.Item2);
                     var combinator = ConvertLogicalOperator(x.Item3);
 
                     return new FilterExpression
                     {
                         Operator = op,
                         LogicalOperator = combinator,
-                        RawValue = term
+                        RawValue = x.Item2.ToString()
                     };
                 });
 
@@ -122,8 +125,8 @@ namespace Smartstore.Core.Rules.Filters
         public static bool TryParse<T, TValue>(Expression<Func<T, TValue>> memberExpression, string filter, out FilterExpression result)
              where T : class
         {
-            Guard.NotNull(memberExpression, nameof(memberExpression));
-            Guard.NotEmpty(filter, nameof(filter));
+            Guard.NotNull(memberExpression);
+            Guard.NotEmpty(filter);
 
             result = null;
 
@@ -141,8 +144,8 @@ namespace Smartstore.Core.Rules.Filters
         public static FilterExpression Parse<T, TValue>(Expression<Func<T, TValue>> memberExpression, string filter)
             where T : class
         {
-            Guard.NotNull(memberExpression, nameof(memberExpression));
-            Guard.NotEmpty(filter, nameof(filter));
+            Guard.NotNull(memberExpression);
+            Guard.NotEmpty(filter);
 
             var expressions = Grammar.Parse(filter);
             var descriptor = new FilterDescriptor<T, TValue>(memberExpression);
@@ -186,9 +189,11 @@ namespace Smartstore.Core.Rules.Filters
             }
         }
 
-        private static RuleOperator ConvertOperator(string op, string term)
+        private static RuleOperator ConvertOperator(string op, TextSpan termSpan)
         {
-            var hasAnyWildcard = term != null && term.IndexOfAny(new[] { '*', '?' }) > -1;
+            // The unquoted term
+            var term = termSpan.ToString();
+            var hasAnyWildcard = term != null && term.IndexOfAny(_wildcardChars) > -1;
 
             if (hasAnyWildcard)
             {

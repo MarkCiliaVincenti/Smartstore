@@ -3,47 +3,81 @@ using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Checkout.Cart;
 using Smartstore.Core.Checkout.Orders;
 using Smartstore.Core.Checkout.Rules;
+using Smartstore.Core.Configuration;
 using Smartstore.Core.Data;
 using Smartstore.Core.Localization;
+using Smartstore.Core.Seo;
 using Smartstore.Core.Stores;
 using Smartstore.Data;
 using Smartstore.Data.Hooks;
 using Smartstore.Engine.Modularity;
+using Smartstore.Utilities;
 
 namespace Smartstore.Core.Checkout.Payment
 {
-    public partial class PaymentService : AsyncDbSaveHook<PaymentMethod>, IPaymentService
+    public partial class PaymentService : AsyncDbSaveHook<BaseEntity>, IPaymentService
     {
-        private const string PAYMENT_METHODS_ALL_KEY = "paymentmethod.all-{0}-";
-        private const string PAYMENT_METHODS_PATTERN_KEY = "paymentmethod.*";
+        // 0 = withRules
+        const string PaymentMethodsAllKey = "payment:method:all:{0}";
+        const string PaymentMethodsPatternKey = "payment:method:*";
+        const string PaymentMethodsFiltersAllKey = "payment:methodfilters:all";
+
+        // 0 = SystemName, 1 = StoreId
+        const string PaymentProviderEnabledKey = "payment:provider:enabled:{0}-{1}";
+        const string PaymentProviderEnabledPatternKey = "payment:provider:enabled:*";
+
+        // 0 = StoreId
+        public const string ProductDetailPaymentIcons = "productdetail:paymenticons:{0}";
+        public const string ProductDetailPaymentIconsPatternKey = "productdetail:paymenticons:*";
 
         private readonly static object _lock = new();
         private static IList<Type> _paymentMethodFilterTypes = null;
 
         private readonly SmartDbContext _db;
+        private readonly IStoreContext _storeContext;
         private readonly IStoreMappingService _storeMappingService;
         private readonly PaymentSettings _paymentSettings;
         private readonly ICartRuleProvider _cartRuleProvider;
         private readonly IProviderManager _providerManager;
+        private readonly ICacheManager _cache;
         private readonly IRequestCache _requestCache;
         private readonly ITypeScanner _typeScanner;
+        private readonly IModuleConstraint _moduleConstraint;
+
+        // All providers request cache. Dictionary key = SystemName.
+        private readonly Lazy<Dictionary<string, Provider<IPaymentMethod>>> _providersCache;
+
+        // Provider active states request cache. Key: (SystemName, StoreId, ShoppingCart)
+        private readonly Dictionary<object, bool> _activeStates = new();
 
         public PaymentService(
             SmartDbContext db,
+            IStoreContext storeContext,
             IStoreMappingService storeMappingService,
             PaymentSettings paymentSettings,
             ICartRuleProvider cartRuleProvider,
             IProviderManager providerManager,
+            ICacheManager cache,
             IRequestCache requestCache,
-            ITypeScanner typeScanner)
+            ITypeScanner typeScanner,
+            IModuleConstraint moduleConstraint)
         {
             _db = db;
+            _storeContext = storeContext;
             _storeMappingService = storeMappingService;
             _paymentSettings = paymentSettings;
             _cartRuleProvider = cartRuleProvider;
             _providerManager = providerManager;
+            _cache = cache;
             _requestCache = requestCache;
             _typeScanner = typeScanner;
+            _moduleConstraint = moduleConstraint;
+
+            _providersCache = new Lazy<Dictionary<string, Provider<IPaymentMethod>>>(() => 
+            {
+                return _providerManager.GetAllProviders<IPaymentMethod>()
+                    .ToDictionarySafe(x => x.Metadata.SystemName, StringComparer.OrdinalIgnoreCase);
+            }, false);
         }
 
         public Localizer T { get; set; } = NullLocalizer.Instance;
@@ -52,89 +86,197 @@ namespace Smartstore.Core.Checkout.Payment
 
         #region Hook
 
-        public override Task<HookResult> OnAfterSaveAsync(IHookedEntity entry, CancellationToken cancelToken)
-            => Task.FromResult(HookResult.Ok);
+        public override async Task<HookResult> OnAfterSaveAsync(IHookedEntity entry, CancellationToken cancelToken)
+        {
+            var entity = entry.Entity;
+            if (entity is Setting setting)
+            {
+                var invalidate = 
+                    (setting.Name.StartsWithNoCase("PluginSetting.") && setting.Name.EndsWithNoCase(".LimitedToStores")) ||
+                    setting.Name.EqualsNoCase(TypeHelper.NameOf<PaymentSettings>(x => x.ActivePaymentMethodSystemNames, true));
+                if (invalidate)
+                {
+                    await _cache.RemoveByPatternAsync(PaymentProviderEnabledPatternKey);
+                }
+            }
+            else if (entity is PaymentMethod)
+            {
+                await _cache.RemoveByPatternAsync(PaymentProviderEnabledPatternKey);
+                _requestCache.RemoveByPattern(PaymentMethodsPatternKey);
+            }
+            else if (entity is StoreMapping storeMapping)
+            {
+                if (NamedEntity.GetEntityName<PaymentMethod>() == storeMapping.EntityName)
+                {
+                    await _cache.RemoveByPatternAsync(PaymentProviderEnabledPatternKey);
+                }
+            }
+            else
+            {
+                return HookResult.Void;
+            }
+
+            return HookResult.Ok;
+        }
 
         public override Task OnAfterSaveCompletedAsync(IEnumerable<IHookedEntity> entries, CancellationToken cancelToken)
         {
-            _requestCache.RemoveByPattern(PAYMENT_METHODS_PATTERN_KEY);
+            _requestCache.RemoveByPattern(PaymentMethodsPatternKey);
 
             return Task.CompletedTask;
         }
 
         #endregion
 
-        public virtual async Task<bool> IsPaymentMethodActiveAsync(string systemName, ShoppingCart cart = null, int storeId = 0)
+        #region Provider management
+
+        public virtual Task<bool> IsPaymentProviderEnabledAsync(string systemName, int storeId = 0)
         {
-            Guard.NotEmpty(systemName, nameof(systemName));
+            Guard.NotEmpty(systemName);
 
-            var activePaymentMethods = await LoadActivePaymentMethodsAsync(cart, storeId, null, false);
-            var method = activePaymentMethods.FirstOrDefault(x => x.Metadata.SystemName == systemName);
+            var provider = _providersCache.Value.Get(systemName);
+            if (provider == null)
+            {
+                return Task.FromResult(false);
+            }
 
-            return method != null;
+            return GetEnabledStateAsync(provider, storeId);
         }
 
-        public virtual async Task<IEnumerable<Provider<IPaymentMethod>>> LoadActivePaymentMethodsAsync(
+        public virtual async Task<bool> IsPaymentProviderActiveAsync(string systemName, ShoppingCart cart = null, int storeId = 0)
+        {
+            Guard.NotEmpty(systemName);
+
+            var provider = _providersCache.Value.Get(systemName);
+            if (provider == null)
+            {
+                return false;
+            }
+
+            return 
+                await GetEnabledStateAsync(provider, storeId) && 
+                await GetActiveStateAsync(provider, storeId, cart, null);
+        }
+
+        private Task<bool> GetEnabledStateAsync(Provider<IPaymentMethod> provider, int storeId)
+        {
+            var sysName = provider.Metadata.SystemName;
+            var cacheKey = PaymentProviderEnabledKey.FormatInvariant(sysName, storeId);
+
+            return _cache.GetAsync(cacheKey, async () => 
+            {
+                var enabled = provider.IsPaymentProviderEnabled(_paymentSettings);
+
+                if (storeId > 0 && enabled)
+                {
+                    // If store-less entry is enabled, the store-specific entry must still be checked.
+                    // First check if container module is enabled.
+                    enabled = _moduleConstraint.Matches(provider.Metadata.ModuleDescriptor, storeId);
+
+                    if (enabled && !QuerySettings.IgnoreMultiStore)
+                    {
+                        // Then check if payment method entity (if any) is limited to this store.
+                        var allMethods = await GetAllPaymentMethodsAsync(false);
+                        var method = allMethods.Get(sysName);
+                        enabled = method == null || await _storeMappingService.AuthorizeAsync(method, storeId);
+                    }
+                }
+
+                return enabled;
+            });
+        }
+
+        private async Task<bool> GetActiveStateAsync(
+            Provider<IPaymentMethod> provider,
+            int storeId,
+            ShoppingCart cart = null,
+            Dictionary<string, PaymentMethod> allMethods = null,
+            IList<IPaymentMethodFilter> allFilters = null)
+        {
+            var sysName = provider.Metadata.SystemName;
+            var cacheKey = (sysName, storeId, cart);
+            if (_activeStates.TryGetValue(cacheKey, out var active)) 
+            {
+                return active;
+            }
+
+            try
+            {
+                // We gonna need expanded entities for rule matching.
+                allMethods ??= await GetAllPaymentMethodsAsync(true);
+
+                // Rule matching
+                if (allMethods.TryGetValue(sysName, out var method))
+                {
+                    var contextAction = (CartRuleContext context) =>
+                    {
+                        context.ShoppingCart = cart;
+                        if (storeId > 0 && storeId != context.Store.Id)
+                        {
+                            context.Store = _storeContext.GetStoreById(storeId);
+                        }
+                    };
+
+                    if (!await _cartRuleProvider.RuleMatchesAsync(method, contextAction: contextAction))
+                    {
+                        return Cached(false);
+                    }
+                }
+
+                allFilters ??= GetAllPaymentMethodFilters();
+                if (allFilters.Count > 0)
+                {
+                    var filterRequest = new PaymentFilterRequest
+                    {
+                        Cart = cart,
+                        StoreId = storeId,
+                        PaymentProvider = provider
+                    };
+
+                    // Only payment providers that have not been filtered out.
+                    if (await allFilters.AnyAsync(x => x.IsExcludedAsync(filterRequest)))
+                    {
+                        return Cached(false);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+
+            return Cached(true);
+
+            bool Cached(bool value)
+            {
+                // Put state to request cache
+                _activeStates[cacheKey] = value;
+                return value;
+            }
+        }
+
+        public virtual async Task<IEnumerable<Provider<IPaymentMethod>>> LoadActivePaymentProvidersAsync(
             ShoppingCart cart = null,
             int storeId = 0,
             PaymentMethodType[] types = null,
             bool provideFallbackMethod = true)
         {
-            var filterRequest = new PaymentFilterRequest
-            {
-                Cart = cart,
-                StoreId = storeId
-            };
-
+            var allPaymentMethods = await GetAllPaymentMethodsAsync(true);
             var allFilters = GetAllPaymentMethodFilters();
-            var allProviders = !types.IsNullOrEmpty()
-                ? (await LoadAllPaymentMethodsAsync(storeId)).Where(x => types.Contains(x.Value.PaymentMethodType))
-                : await LoadAllPaymentMethodsAsync(storeId);
 
-            var paymentMethods = await GetAllPaymentMethodsAsync(storeId);
+            var allProviders = await LoadAllPaymentProvidersAsync(true, storeId);
+            if (!types.IsNullOrEmpty())
+            {
+                allProviders = allProviders.Where(x => types.Contains(x.Value.PaymentMethodType));
+            }
 
             var activeProviders = await allProviders
-                .WhereAwait(async p =>
-                {
-                    try
-                    {
-                        // Only active payment methods.
-                        if (!p.Value.IsActive || !_paymentSettings.ActivePaymentMethodSystemNames.Contains(p.Metadata.SystemName, StringComparer.InvariantCultureIgnoreCase))
-                        {
-                            return false;
-                        }
-
-                        // Rule sets.
-                        if (paymentMethods.TryGetValue(p.Metadata.SystemName, out var pm))
-                        {
-                            await _db.LoadCollectionAsync(pm, x => x.RuleSets);
-
-                            if (!await _cartRuleProvider.RuleMatchesAsync(pm))
-                            {
-                                return false;
-                            }
-                        }
-
-                        filterRequest.PaymentMethod = p;
-
-                        // Only payment methods that have not been filtered out.
-                        if (await allFilters.AnyAsync(x => x.IsExcludedAsync(filterRequest)))
-                        {
-                            return false;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error(ex);
-                    }
-
-                    return true;
-                })
+                .WhereAwait(x => GetActiveStateAsync(x, storeId, cart, allPaymentMethods, allFilters))
                 .ToListAsync();
 
             if (!activeProviders.Any() && provideFallbackMethod)
             {
-                var fallbackMethod = allProviders.FirstOrDefault(x => x.IsPaymentMethodActive(_paymentSettings))
+                var fallbackMethod = allProviders.FirstOrDefault(x => x.IsPaymentProviderEnabled(_paymentSettings))
                     ?? allProviders.FirstOrDefault(x => x.Metadata?.ModuleDescriptor?.SystemName?.EqualsNoCase("Smartstore.OfflinePayment") ?? false)
                     ?? allProviders.FirstOrDefault();
 
@@ -145,82 +287,116 @@ namespace Smartstore.Core.Checkout.Payment
 
                 if (DataSettings.DatabaseIsInstalled())
                 {
-                    throw new InvalidOperationException(T("Payment.OneActiveMethodProviderRequired"));
+                    throw new PaymentException(T("Payment.OneActiveMethodProviderRequired"));
                 }
             }
 
             return activeProviders;
         }
 
-        public virtual async Task<Provider<IPaymentMethod>> LoadPaymentMethodBySystemNameAsync(string systemName, bool onlyWhenActive = false, int storeId = 0)
+        public virtual async Task<Provider<IPaymentMethod>> LoadPaymentProviderBySystemNameAsync(string systemName, bool onlyWhenEnabled = false, int storeId = 0)
         {
-            var provider = _providerManager.GetProvider<IPaymentMethod>(systemName, storeId);
-            if (provider == null || onlyWhenActive && !provider.IsPaymentMethodActive(_paymentSettings))
+            var provider = _providersCache.Value.Get(systemName);
+            var checkEnabled = onlyWhenEnabled || storeId > 0;
+
+            if (provider == null || checkEnabled && !await GetEnabledStateAsync(provider, storeId))
             {
                 return null;
-            }
-
-            if (!QuerySettings.IgnoreMultiStore && storeId > 0)
-            {
-                // Return provider if paymentMethod is null
-                var paymentMethod = _db.PaymentMethods.FirstOrDefault(x => x.PaymentMethodSystemName == systemName);
-                if (paymentMethod != null && !await _storeMappingService.AuthorizeAsync(paymentMethod, storeId))
-                {
-                    return null;
-                }
             }
 
             return provider;
         }
 
-        private async Task<Provider<IPaymentMethod>> LoadMethodOrThrowAsync(string systemName)
+        public virtual async Task<IEnumerable<Provider<IPaymentMethod>>> LoadAllPaymentProvidersAsync(bool onlyEnabled = false, int storeId = 0)
         {
-            var paymentMethod = await LoadPaymentMethodBySystemNameAsync(systemName);
-            return paymentMethod ?? throw new InvalidOperationException(T("Payment.CouldNotLoadMethod"));
-        }
+            var providers = _providersCache.Value.Values.AsEnumerable();
 
-        public virtual async Task<IEnumerable<Provider<IPaymentMethod>>> LoadAllPaymentMethodsAsync(int storeId = 0)
-        {
-            var providers = _providerManager.GetAllProviders<IPaymentMethod>(storeId);
-            if (providers.Any() && !QuerySettings.IgnoreMultiStore && storeId > 0)
+            if (onlyEnabled || storeId > 0)
             {
-                var unauthorizedMethods = await _db.PaymentMethods
-                    .AsNoTracking()
-                    .Where(x => x.LimitedToStores)
+                providers = await providers
+                    .WhereAwait(x => GetEnabledStateAsync(x, storeId))
                     .ToListAsync();
-
-                var unauthorizedMethodNames = await unauthorizedMethods
-                    .WhereAwait(async x => !await _storeMappingService.AuthorizeAsync(x, storeId))
-                    .Select(x => x.PaymentMethodSystemName)
-                    .ToListAsync();
-
-                return providers.Where(x => !unauthorizedMethodNames.Contains(x.Metadata.SystemName));
             }
 
             return providers;
         }
 
-        public virtual Task<Dictionary<string, PaymentMethod>> GetAllPaymentMethodsAsync(int storeId = 0)
+        public virtual async Task<Dictionary<string, PaymentMethod>> GetAllPaymentMethodsAsync(bool withRules = false)
         {
-            return _requestCache.GetAsync(PAYMENT_METHODS_ALL_KEY.FormatInvariant(storeId), async () =>
+            var withRulesCacheKey = PaymentMethodsAllKey.FormatInvariant(true);
+            if (_requestCache.Contains(withRulesCacheKey))
             {
-                return await _db.PaymentMethods
-                    .AsNoTracking()
+                // Always return upgraded entities if they are cached.
+                return _requestCache.Get<Dictionary<string, PaymentMethod>>(withRulesCacheKey);
+            }
+
+            var noRulescacheKey = PaymentMethodsAllKey.FormatInvariant(false);
+            if (!withRules)
+            {
+                if (_requestCache.Contains(noRulescacheKey))
+                {
+                    // Return unexpanded entities from cache when they are requested
+                    return _requestCache.Get<Dictionary<string, PaymentMethod>>(noRulescacheKey);
+                }
+            }
+            
+            if (withRules)
+            {
+                // Try to remove unexpanded entities when an "upgrade" is requested
+                _requestCache.Remove(noRulescacheKey);
+            }
+
+            var query = _db.PaymentMethods.AsNoTracking();
+
+            if (withRules)
+            {
+                query = query
                     .AsSplitQuery()
                     .Include(x => x.RuleSets)
-                    .ThenInclude(x => x.Rules)
-                    .ApplyStoreFilter(storeId)
-                    .ToDictionaryAsync(x => x.PaymentMethodSystemName.EmptyNull(), x => x, StringComparer.OrdinalIgnoreCase);
-            });
+                    .ThenInclude(x => x.Rules);
+            }
+
+            var result = await query.ToDictionaryAsync(x => x.PaymentMethodSystemName.EmptyNull(), x => x, StringComparer.OrdinalIgnoreCase);
+
+            // Put result to request cache.
+            _requestCache.Put(withRules ? withRulesCacheKey : noRulescacheKey, result);
+
+            return result;
         }
+
+        protected virtual IList<IPaymentMethodFilter> GetAllPaymentMethodFilters()
+        {
+            if (_paymentMethodFilterTypes == null)
+            {
+                lock (_lock)
+                {
+                    _paymentMethodFilterTypes ??= _typeScanner.FindTypes<IPaymentMethodFilter>().ToList();
+                }
+            }
+
+            var paymentMethodFilters = _requestCache.Get(PaymentMethodsFiltersAllKey, () =>
+            {
+                return _paymentMethodFilterTypes
+                    .Select(x => EngineContext.Current.Scope.ResolveUnregistered(x) as IPaymentMethodFilter)
+                    .ToList();
+            });
+
+            return paymentMethodFilters;
+        }
+
+        #endregion
+
+        #region Payment processing
 
         public virtual async Task<PreProcessPaymentResult> PreProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest)
         {
             if (processPaymentRequest.OrderTotal == decimal.Zero)
+            {
                 return new();
+            }     
 
-            var paymentMethod = await LoadMethodOrThrowAsync(processPaymentRequest.PaymentMethodSystemName);
-            return await paymentMethod.Value.PreProcessPaymentAsync(processPaymentRequest);
+            var provider = await LoadProviderOrThrow(processPaymentRequest.PaymentMethodSystemName);
+            return await provider.Value.PreProcessPaymentAsync(processPaymentRequest);
         }
 
         public virtual async Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest)
@@ -236,12 +412,12 @@ namespace Smartstore.Core.Checkout.Payment
             // Remove any white space or dashes from credit card number
             if (processPaymentRequest.CreditCardNumber.HasValue())
             {
-                processPaymentRequest.CreditCardNumber = processPaymentRequest.CreditCardNumber.Replace(" ", "");
-                processPaymentRequest.CreditCardNumber = processPaymentRequest.CreditCardNumber.Replace("-", "");
+                processPaymentRequest.CreditCardNumber = processPaymentRequest.CreditCardNumber.Replace(" ", string.Empty);
+                processPaymentRequest.CreditCardNumber = processPaymentRequest.CreditCardNumber.Replace("-", string.Empty);
             }
 
-            var paymentMethod = await LoadMethodOrThrowAsync(processPaymentRequest.PaymentMethodSystemName);
-            return await paymentMethod.Value.ProcessPaymentAsync(processPaymentRequest);
+            var provider = await LoadProviderOrThrow(processPaymentRequest.PaymentMethodSystemName);
+            return await provider.Value.ProcessPaymentAsync(processPaymentRequest);
         }
 
         public virtual async Task PostProcessPaymentAsync(PostProcessPaymentRequest postProcessPaymentRequest)
@@ -249,28 +425,31 @@ namespace Smartstore.Core.Checkout.Payment
             var order = postProcessPaymentRequest.Order;
 
             if (order.PaymentMethodSystemName.IsEmpty() || order.OrderTotal == decimal.Zero)
+            {
                 return;
+            } 
 
-            var paymentMethod = await LoadMethodOrThrowAsync(order.PaymentMethodSystemName);
+            var paymentMethod = await LoadProviderOrThrow(order.PaymentMethodSystemName);
             await paymentMethod.Value.PostProcessPaymentAsync(postProcessPaymentRequest);
         }
 
         public virtual async Task<bool> CanRePostProcessPaymentAsync(Order order)
         {
-            if (order == null)
-                throw new ArgumentNullException(nameof(order));
+            Guard.NotNull(order);
 
             if (!_paymentSettings.AllowRePostingPayments)
+            {
                 return false;
+            }    
 
-            var paymentMethod = await LoadPaymentMethodBySystemNameAsync(order.PaymentMethodSystemName);
-            if (paymentMethod == null)
+            var provider = await LoadPaymentProviderBySystemNameAsync(order.PaymentMethodSystemName);
+            if (provider == null)
             {
                 // Payment method couldn't be loaded (for example, was uninstalled).
                 return false;
             }
 
-            if (paymentMethod.Value.PaymentMethodType is not PaymentMethodType.Redirection and not PaymentMethodType.StandardAndRedirection)
+            if (provider.Value.PaymentMethodType is not PaymentMethodType.Redirection and not PaymentMethodType.StandardAndRedirection)
             {
                 // This option is available only for redirection payment methods.
                 return false;
@@ -282,68 +461,57 @@ namespace Smartstore.Core.Checkout.Payment
                 return false;
             }
 
-            return await paymentMethod.Value.CanRePostProcessPaymentAsync(order);
+            return await provider.Value.CanRePostProcessPaymentAsync(order);
         }
 
         public virtual async Task<CapturePaymentResult> CaptureAsync(CapturePaymentRequest capturePaymentRequest)
         {
-            var paymentMethod = await LoadMethodOrThrowAsync(capturePaymentRequest.Order.PaymentMethodSystemName);
-
-            try
-            {
-                return await paymentMethod.Value.CaptureAsync(capturePaymentRequest);
-            }
-            catch (NotSupportedException)
-            {
-                var result = new CapturePaymentResult();
-                result.Errors.Add(T("Common.Payment.NoCaptureSupport"));
-                return result;
-            }
-            catch
-            {
-                throw;
-            }
+            var provider = await LoadProviderOrThrow(capturePaymentRequest.Order.PaymentMethodSystemName);
+            return await provider.Value.CaptureAsync(capturePaymentRequest);
         }
 
         public virtual async Task<RefundPaymentResult> RefundAsync(RefundPaymentRequest refundPaymentRequest)
         {
-            var paymentMethod = await LoadMethodOrThrowAsync(refundPaymentRequest.Order.PaymentMethodSystemName);
-
-            try
-            {
-                return await paymentMethod.Value.RefundAsync(refundPaymentRequest);
-            }
-            catch (NotSupportedException)
-            {
-                var result = new RefundPaymentResult();
-                result.Errors.Add(T("Common.Payment.NoRefundSupport"));
-                return result;
-            }
-            catch
-            {
-                throw;
-            }
+            var provider = await LoadProviderOrThrow(refundPaymentRequest.Order.PaymentMethodSystemName);
+            return await provider.Value.RefundAsync(refundPaymentRequest);
         }
 
         public virtual async Task<VoidPaymentResult> VoidAsync(VoidPaymentRequest voidPaymentRequest)
         {
-            var paymentMethod = await LoadMethodOrThrowAsync(voidPaymentRequest.Order.PaymentMethodSystemName);
-
-            try
-            {
-                return await paymentMethod.Value.VoidAsync(voidPaymentRequest);
-            }
-            catch (NotSupportedException)
-            {
-                var result = new VoidPaymentResult();
-                result.Errors.Add(T("Common.Payment.NoVoidSupport"));
-                return result;
-            }
-            catch
-            {
-                throw;
-            }
+            var provider = await LoadProviderOrThrow(voidPaymentRequest.Order.PaymentMethodSystemName);
+            return await provider.Value.VoidAsync(voidPaymentRequest);
         }
+
+        public virtual string GetMaskedCreditCardNumber(string creditCardNumber)
+        {
+            if (creditCardNumber.IsEmpty())
+            {
+                return string.Empty;
+            }
+                
+            if (creditCardNumber.Length <= 4)
+            {
+                return creditCardNumber;
+            }
+
+            var last4 = creditCardNumber.Substring(creditCardNumber.Length - 4, 4);
+            var maskedChars = string.Empty;
+            for (var i = 0; i < creditCardNumber.Length - 4; i++)
+            {
+                maskedChars += "*";
+            }
+            return maskedChars + last4;
+        }
+
+        private async Task<Provider<IPaymentMethod>> LoadProviderOrThrow(string systemName)
+        {
+            var provider = await LoadPaymentProviderBySystemNameAsync(systemName);
+            return provider ?? throw new PaymentException(T("Payment.CouldNotLoadMethod"));
+        }
+
+        #endregion
+
+        #region Recurring payment
 
         public virtual async Task<ProcessPaymentResult> ProcessRecurringPaymentAsync(ProcessPaymentRequest processPaymentRequest)
         {
@@ -355,42 +523,9 @@ namespace Smartstore.Core.Checkout.Payment
                 };
             }
 
-            var paymentMethod = await LoadMethodOrThrowAsync(processPaymentRequest.PaymentMethodSystemName);
-
-            try
-            {
-                return await paymentMethod.Value.ProcessRecurringPaymentAsync(processPaymentRequest);
-            }
-            catch (NotSupportedException)
-            {
-                var result = new ProcessPaymentResult();
-                result.Errors.Add(T("Common.Payment.NoRecurringPaymentSupport"));
-                return result;
-            }
-            catch
-            {
-                throw;
-            }
+            var provider = await LoadProviderOrThrow(processPaymentRequest.PaymentMethodSystemName);
+            return await provider.Value.ProcessRecurringPaymentAsync(processPaymentRequest);
         }
-
-        public virtual string GetMaskedCreditCardNumber(string creditCardNumber)
-        {
-            if (creditCardNumber.IsEmpty())
-                return string.Empty;
-
-            if (creditCardNumber.Length <= 4)
-                return creditCardNumber;
-
-            var last4 = creditCardNumber.Substring(creditCardNumber.Length - 4, 4);
-            var maskedChars = string.Empty;
-            for (var i = 0; i < creditCardNumber.Length - 4; i++)
-            {
-                maskedChars += "*";
-            }
-            return maskedChars + last4;
-        }
-
-        #region Recurring payment
 
         public virtual async Task<DateTime?> GetNextRecurringPaymentDateAsync(RecurringPayment recurringPayment)
         {
@@ -422,7 +557,7 @@ namespace Smartstore.Core.Checkout.Payment
                     RecurringProductCyclePeriod.Weeks => startDate.AddDays((double)(7 * cycleLength) * historyCount),
                     RecurringProductCyclePeriod.Months => startDate.AddMonths(cycleLength * historyCount),
                     RecurringProductCyclePeriod.Years => startDate.AddYears(cycleLength * historyCount),
-                    _ => throw new Exception("Not supported cycle period"),
+                    _ => throw new PaymentException("Not supported cycle period"),
                 };
             }
             else if (recurringPayment.TotalCycles > 0)
@@ -445,46 +580,14 @@ namespace Smartstore.Core.Checkout.Payment
         public virtual async Task<CancelRecurringPaymentResult> CancelRecurringPaymentAsync(CancelRecurringPaymentRequest cancelPaymentRequest)
         {
             if (cancelPaymentRequest.Order.OrderTotal == decimal.Zero)
+            {
                 return new CancelRecurringPaymentResult();
+            }   
 
-            var paymentMethod = await LoadMethodOrThrowAsync(cancelPaymentRequest.Order.PaymentMethodSystemName);
-
-            try
-            {
-                return await paymentMethod.Value.CancelRecurringPaymentAsync(cancelPaymentRequest);
-            }
-            catch (NotSupportedException)
-            {
-                var result = new CancelRecurringPaymentResult();
-                result.Errors.Add(T("Common.Payment.NoRecurringPaymentSupport"));
-                return result;
-            }
-            catch
-            {
-                throw;
-            }
+            var provider = await LoadProviderOrThrow(cancelPaymentRequest.Order.PaymentMethodSystemName);
+            return await provider.Value.CancelRecurringPaymentAsync(cancelPaymentRequest);
         }
 
         #endregion
-
-        protected virtual IList<IPaymentMethodFilter> GetAllPaymentMethodFilters()
-        {
-            if (_paymentMethodFilterTypes == null)
-            {
-                lock (_lock)
-                {
-                    if (_paymentMethodFilterTypes == null)
-                    {
-                        _paymentMethodFilterTypes = _typeScanner.FindTypes<IPaymentMethodFilter>().ToList();
-                    }
-                }
-            }
-
-            var paymentMethodFilters = _paymentMethodFilterTypes
-                .Select(x => EngineContext.Current.Scope.ResolveUnregistered(x) as IPaymentMethodFilter)
-                .ToList();
-
-            return paymentMethodFilters;
-        }
     }
 }

@@ -38,12 +38,6 @@ namespace Smartstore.PayPal.Models
         [LocalizedDisplay("*WebhookUrl")]
         public string WebhookUrl { get; set; }
 
-        [LocalizedDisplay("*DisabledFundings")]
-        public string[] DisabledFundings { get; set; }
-
-        [LocalizedDisplay("*EnabledFundings")]
-        public string[] EnabledFundings { get; set; }
-
         [LocalizedDisplay("*DisplayProductDetailPayLaterWidget")]
         public bool DisplayProductDetailPayLaterWidget { get; set; }
 
@@ -59,12 +53,6 @@ namespace Smartstore.PayPal.Models
 
         [LocalizedDisplay("*ButtonColor")]
         public string ButtonColor { get; set; } = "gold";
-
-        [LocalizedDisplay("*ShowButtonInMiniShoppingCart")]
-        public bool ShowButtonInMiniShoppingCart { get; set; }
-
-        [LocalizedDisplay("*ShowButtonOnCartPage")]
-        public bool ShowButtonOnCartPage { get; set; } = true;
 
         [LocalizedDisplay("*FundingsOffCanvasCart")]
         public string[] FundingsOffCanvasCart { get; set; }

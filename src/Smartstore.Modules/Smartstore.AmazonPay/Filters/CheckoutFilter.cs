@@ -35,26 +35,18 @@ namespace Smartstore.AmazonPay.Filters
             _orderSettings = orderSettings;
         }
 
-        public Localizer T { get; set; } = NullLocalizer.Instance;
-
         public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
         {
-            if (!await IsAmazonPayActive())
-            {
-                await next();
-                return;
-            }
-
             var action = context.RouteData.Values.GetActionName();
 
             if (action.EqualsNoCase(nameof(CheckoutController.Completed)))
             {
                 var responseStatus = context.HttpContext.Session.GetString("AmazonPayResponseStatus");
-                if (responseStatus.HasValue())
+                if (responseStatus.HasValue() && await IsAmazonPayActive())
                 {
                     // 202 (Accepted): authorization is pending.
                     var completedNote = responseStatus == "202"
-                        ? T("Plugins.Payments.AmazonPay.AsyncPaymentAuthorizationNote").Value
+                        ? _services.Localization.GetResource("Plugins.Payments.AmazonPay.AsyncPaymentAuthorizationNote")
                         : string.Empty;
 
                     if (!_orderSettings.DisableOrderCompletedPage)
@@ -74,7 +66,7 @@ namespace Smartstore.AmazonPay.Filters
 
             var state = _checkoutStateAccessor.CheckoutState.GetCustomState<AmazonPayCheckoutState>();
 
-            if (state.SessionId.HasValue() && IsAmazonPaySelected())
+            if (state.SessionId.HasValue() && IsAmazonPaySelected() && await IsAmazonPayActive())
             {
                 if (action.EqualsNoCase(nameof(CheckoutController.PaymentMethod)))
                 {
@@ -100,6 +92,6 @@ namespace Smartstore.AmazonPay.Filters
             => _services.WorkContext.CurrentCustomer.GenericAttributes.SelectedPaymentMethod.EqualsNoCase(AmazonPayProvider.SystemName);
 
         private Task<bool> IsAmazonPayActive()
-            => _paymentService.Value.IsPaymentMethodActiveAsync(AmazonPayProvider.SystemName, null, _services.StoreContext.CurrentStore.Id);
+            => _paymentService.Value.IsPaymentProviderActiveAsync(AmazonPayProvider.SystemName, null, _services.StoreContext.CurrentStore.Id);
     }
 }

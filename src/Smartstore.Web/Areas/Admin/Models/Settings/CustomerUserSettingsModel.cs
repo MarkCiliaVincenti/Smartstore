@@ -67,6 +67,9 @@ namespace Smartstore.Admin.Models
             [LocalizedDisplay("*CustomerNameFormatMaxLength")]
             public int CustomerNameFormatMaxLength { get; set; }
 
+            [LocalizedDisplay("*CustomerNameAllowedCharacters")]
+            public string CustomerNameAllowedCharacters { get; set; }
+
             [LocalizedDisplay("*NewsletterEnabled")]
             public bool NewsletterEnabled { get; set; }
 
@@ -232,8 +235,8 @@ namespace Smartstore.Admin.Models
         [LocalizedDisplay("Admin.Configuration.Settings.CustomerUser.")]
         public partial class PrivacySettingsModel
         {
-            [LocalizedDisplay("*Privacy.EnableCookieConsent")]
-            public bool EnableCookieConsent { get; set; } = true;
+            [LocalizedDisplay("*Privacy.CookieConsentRequirement")]
+            public CookieConsentRequirement CookieConsentRequirement { get; set; }
 
             [LocalizedDisplay("*Privacy.ModalCookieConsent")]
             public bool ModalCookieConsent { get; set; } = true;

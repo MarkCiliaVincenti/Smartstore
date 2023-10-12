@@ -2,11 +2,10 @@
 {
     public class FilterDescriptor : RuleDescriptor
     {
-        public FilterDescriptor(LambdaExpression memberExpression)
-            : base(RuleScope.Customer)
+        public FilterDescriptor(LambdaExpression memberExpression, RuleScope scope = RuleScope.Customer)
+            : base(scope)
         {
-            Guard.NotNull(memberExpression, nameof(memberExpression));
-            MemberExpression = memberExpression;
+            MemberExpression = Guard.NotNull(memberExpression);
         }
 
         public LambdaExpression MemberExpression { get; private set; }
@@ -19,10 +18,10 @@
 
     public class FilterDescriptor<T, TValue> : FilterDescriptor where T : class
     {
-        public FilterDescriptor(Expression<Func<T, TValue>> expression)
-            : base(expression) // TODO
+        public FilterDescriptor(Expression<Func<T, TValue>> expression, RuleScope scope = RuleScope.Customer)
+            : base(expression, scope) // TODO
         {
-            Guard.NotNull(expression, nameof(expression));
+            Guard.NotNull(expression);
 
             MemberExpression = expression;
         }

@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc.Rendering;
 using Smartstore.Collections;
+using Smartstore.ComponentModel;
 using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Catalog.Pricing;
 using Smartstore.Core.Catalog.Products;
@@ -15,6 +16,7 @@ using Smartstore.Core.Stores;
 using Smartstore.Diagnostics;
 using Smartstore.Web.Infrastructure.Hooks;
 using Smartstore.Web.Models.Catalog;
+using Smartstore.Web.Models.Catalog.Mappers;
 using Smartstore.Web.Models.Media;
 
 namespace Smartstore.Web.Controllers
@@ -23,7 +25,7 @@ namespace Smartstore.Web.Controllers
     {
         public async Task<ProductDetailsModel> MapProductDetailsPageModelAsync(Product product, ProductVariantQuery query)
         {
-            Guard.NotNull(product, nameof(product));
+            Guard.NotNull(product);
 
             var customer = _services.WorkContext.CurrentCustomer;
             var store = _services.StoreContext.CurrentStore;
@@ -55,12 +57,15 @@ namespace Smartstore.Web.Controllers
             // Also purchased products
             await PrepareAlsoPurchasedProductsModelAsync(model, product);
 
+            // Custom mapping
+            await MapperFactory.MapWithRegisteredMapperAsync(product, model, new { Context = modelContext, Quantity = 1 });
+
             return model;
         }
 
         protected internal virtual async Task<ProductDetailsModel> MapProductDetailsPageModelAsync(ProductDetailsModelContext modelContext)
         {
-            Guard.NotNull(modelContext, nameof(modelContext));
+            Guard.NotNull(modelContext);
 
             var product = modelContext.Product;
             var query = modelContext.VariantQuery;
@@ -183,7 +188,7 @@ namespace Smartstore.Web.Controllers
                 model.ProductTemplateViewPath = await _services.Cache.GetAsync(templateCacheKey, async () =>
                 {
                     var template = await _db.ProductTemplates.FindByIdAsync(product.ProductTemplateId, false)
-                        ?? await _db.ProductTemplates.AsNoTracking().OrderBy(x => x.Id).FirstOrDefaultAsync();
+                        ?? await _db.ProductTemplates.AsNoTracking().OrderBy(x => x.DisplayOrder).FirstOrDefaultAsync();
 
                     return template.ViewPath;
                 });
@@ -193,13 +198,13 @@ namespace Smartstore.Web.Controllers
                 #region Brands
 
                 // Brands
-                if (_catalogSettings.ShowManufacturerPicturesInProductDetail)
+                if (_catalogSettings.ShowManufacturerInProductDetail)
                 {
                     var brands = _db.IsCollectionLoaded(product, x => x.ProductManufacturers)
                         ? product.ProductManufacturers
                         : await batchContext.ProductManufacturers.GetOrLoadAsync(product.Id);
 
-                    model.Brands = await PrepareBrandOverviewModelAsync(brands, null, true);
+                    model.Brands = await PrepareBrandOverviewModelAsync(brands, null, _catalogSettings.ShowManufacturerPicturesInProductDetail);
                 }
 
                 #endregion
@@ -259,7 +264,7 @@ namespace Smartstore.Web.Controllers
                 #endregion
 
                 // ----> Core mapper <------
-                await PrepareProductDetailModelAsync(model, modelContext);
+                await PrepareProductDetailModelAsync(model, modelContext, 1);
 
                 #region Action items
 
@@ -364,10 +369,14 @@ namespace Smartstore.Web.Controllers
             }
         }
 
-        public async Task PrepareProductDetailModelAsync(ProductDetailsModel model, ProductDetailsModelContext modelContext, int selectedQuantity = 1)
+        public async Task PrepareProductDetailModelAsync(
+            ProductDetailsModel model, 
+            ProductDetailsModelContext modelContext, 
+            int selectedQuantity = 1,
+            bool callCustomMapper = false)
         {
-            Guard.NotNull(model, nameof(model));
-            Guard.NotNull(modelContext, nameof(modelContext));
+            Guard.NotNull(model);
+            Guard.NotNull(modelContext);
 
             var product = modelContext.Product;
 
@@ -384,10 +393,16 @@ namespace Smartstore.Web.Controllers
             await PrepareProductPropertiesModelAsync(model, modelContext);
 
             // AddToCart
-            PrepareProductCartModel(model, modelContext, selectedQuantity);
+            await PrepareProductCartModelAsync(model, modelContext, selectedQuantity);
 
             // GiftCards
             PrepareProductGiftCardsModel(model, modelContext);
+
+            // Custom mapping
+            if (callCustomMapper)
+            {
+                await MapperFactory.MapWithRegisteredMapperAsync(product, model, new { Context = modelContext, Quantity = selectedQuantity });
+            }
 
             _services.DisplayControl.Announce(product);
         }
@@ -489,9 +504,7 @@ namespace Smartstore.Web.Controllers
                             case AttributeControlType.Datepicker:
                                 if (selectedAttribute.Date.HasValue)
                                 {
-                                    attributeModel.SelectedDay = selectedAttribute.Date.Value.Day;
-                                    attributeModel.SelectedMonth = selectedAttribute.Date.Value.Month;
-                                    attributeModel.SelectedYear = selectedAttribute.Date.Value.Year;
+                                    attributeModel.SelectedDate = selectedAttribute.Date;
                                 }
                                 break;
                             case AttributeControlType.FileUpload:
@@ -512,14 +525,6 @@ namespace Smartstore.Web.Controllers
                                 break;
                         }
                     }
-                }
-
-                // TODO: obsolete? Alias field is not used for custom values anymore, only for URL as URL variant alias.
-                if (attribute.AttributeControlType == AttributeControlType.Datepicker && attributeModel.Alias.HasValue() && RegularExpressions.IsYearRange.IsMatch(attributeModel.Alias))
-                {
-                    var match = RegularExpressions.IsYearRange.Match(attributeModel.Alias);
-                    attributeModel.BeginYear = match.Groups[1].Value.ToInt();
-                    attributeModel.EndYear = match.Groups[2].Value.ToInt();
                 }
 
                 foreach (var value in attributeValues)
@@ -613,8 +618,9 @@ namespace Smartstore.Web.Controllers
                         if (defaultValue != null)
                         {
                             defaultValue.IsPreSelected = true;
-                            query.AddVariant(new ProductVariantQueryItem(defaultValue.Id.ToString())
+                            query.AddVariant(new()
                             {
+                                Value = defaultValue.Id.ToString(),
                                 ProductId = product.Id,
                                 BundleItemId = bundleItemId,
                                 AttributeId = attribute.ProductAttributeId,
@@ -630,8 +636,9 @@ namespace Smartstore.Web.Controllers
                         // Apply attributes preselected by merchant.
                         foreach (var value in attributeModel.Values.Where(x => x.IsPreSelected))
                         {
-                            query.AddVariant(new ProductVariantQueryItem(value.Id.ToString())
+                            query.AddVariant(new()
                             {
+                                Value = value.Id.ToString(),
                                 ProductId = product.Id,
                                 BundleItemId = bundleItemId,
                                 AttributeId = attribute.ProductAttributeId,
@@ -696,11 +703,8 @@ namespace Smartstore.Web.Controllers
                 model.AttributeInfo = await _productAttributeFormatter.FormatAttributesAsync(
                     modelContext.SelectedAttributes,
                     product,
-                    modelContext.Customer,
-                    separator: ", ",
-                    includePrices: false,
-                    includeGiftCardAttributes: false,
-                    includeHyperlinks: false);
+                    ProductAttributeFormatOptions.PlainText,
+                    modelContext.Customer);
             }
 
             model.SelectedCombination = await _productAttributeMaterializer.FindAttributeCombinationAsync(product.Id, modelContext.SelectedAttributes);
@@ -853,11 +857,11 @@ namespace Smartstore.Web.Controllers
                 additionalShippingCosts = shippingSurcharge.Value.ToString(true) + ", ";
             }
 
-            if (!product.IsShippingEnabled || (shippingSurcharge.GetValueOrDefault() == 0 && product.IsFreeShipping))
+            if (!product.IsShippingEnabled || product.IsFreeShipping)
             {
                 model.LegalInfo += product.IsTaxExempt
                     ? T("Common.FreeShipping")
-                    : "{0} {1}, {2}".FormatInvariant(taxInfo, defaultTaxRate, T("Common.FreeShipping"));
+                    : "{0} {1}{2}".FormatInvariant(taxInfo, defaultTaxRate, T("Common.FreeShipping"));
             }
             else
             {
@@ -924,7 +928,7 @@ namespace Smartstore.Web.Controllers
             model.DeliveryTimesPresentation = deliveryPresentation;
             model.DisplayDeliveryTimeAccordingToStock = product.DisplayDeliveryTimeAccordingToStock(_catalogSettings);
 
-            if (model.DeliveryTimeName.IsEmpty() && deliveryPresentation != DeliveryTimesPresentation.None)
+            if (!model.IsAvailable && model.DeliveryTimeName.IsEmpty() && deliveryPresentation != DeliveryTimesPresentation.None)
             {
                 model.DeliveryTimeName = T("ShoppingCart.NotAvailable");
             }
@@ -947,7 +951,7 @@ namespace Smartstore.Web.Controllers
             }
         }
 
-        protected void PrepareProductCartModel(ProductDetailsModel model, ProductDetailsModelContext modelContext, int selectedQuantity)
+        protected async Task PrepareProductCartModelAsync(ProductDetailsModel model, ProductDetailsModelContext modelContext, int selectedQuantity)
         {
             using var chronometer = _services.Chronometer.Step("PrepareProductCartModel");
 
@@ -956,14 +960,11 @@ namespace Smartstore.Web.Controllers
             var displayPrices = modelContext.DisplayPrices;
 
             model.AddToCart.ProductId = product.Id;
-            model.AddToCart.EnteredQuantity = product.OrderMinimumQuantity > selectedQuantity ? product.OrderMinimumQuantity : selectedQuantity;
-            model.AddToCart.MinOrderAmount = product.OrderMinimumQuantity;
-            model.AddToCart.MaxOrderAmount = product.OrderMaximumQuantity;
-            model.AddToCart.QuantityUnitName = model.QuantityUnitName; // TODO: (mc) remove 'QuantityUnitName' from parent model later
-            model.AddToCart.QuantityStep = product.QuantityStep > 0 ? product.QuantityStep : 1;
             model.AddToCart.HideQuantityControl = product.HideQuantityControl;
-            model.AddToCart.QuantityControlType = product.QuantityControlType;
             model.AddToCart.AvailableForPreOrder = product.AvailableForPreOrder;
+
+            await product.MapQuantityInputAsync(model.AddToCart, selectedQuantity);
+            model.AddToCart.QuantityUnitName = model.QuantityUnitName; // TODO: (mc) remove 'QuantityUnitName' from parent model later
 
             // 'add to cart', 'add to wishlist' buttons.
             model.AddToCart.DisableBuyButton = !displayPrices || product.DisableBuyButton ||
@@ -983,16 +984,6 @@ namespace Smartstore.Web.Controllers
                 model.AddToCart.CustomerEnteredPriceRange = T("Products.EnterProductPrice.Range",
                     _currencyService.ConvertToWorkingCurrency(minimumCustomerEnteredPrice),
                     _currencyService.ConvertToWorkingCurrency(maximumCustomerEnteredPrice));
-            }
-
-            var allowedQuantities = product.ParseAllowedQuantities();
-            foreach (var qty in allowedQuantities)
-            {
-                model.AddToCart.AllowedQuantities.Add(new SelectListItem
-                {
-                    Text = qty.ToString(),
-                    Value = qty.ToString()
-                });
             }
         }
 
@@ -1076,7 +1067,6 @@ namespace Smartstore.Web.Controllers
             var alsoPurchasedProductIds = await _services.Cache.GetAsync(string.Format(ModelCacheInvalidator.PRODUCTS_ALSO_PURCHASED_IDS_KEY, product.Id, storeId), async () =>
             {
                 return await _db.OrderItems
-                    .AsNoTracking()
                     .SelectAlsoPurchasedProductIds(product.Id, _catalogSettings.ProductsAlsoPurchasedNumber, storeId)
                     .ToArrayAsync();
             });
@@ -1145,10 +1135,12 @@ namespace Smartstore.Web.Controllers
                 else
                 {
                     // Images not belonging to any combination...
-                    allCombinationImageIds ??= new List<int>();
-                    foreach (var file in files.Where(p => !allCombinationImageIds.Contains(p.Id)))
+                    if (allCombinationImageIds != null)
                     {
-                        model.Files.Add(PrepareMediaFileInfo(file, model));
+                        foreach (var file in files.Where(p => !allCombinationImageIds.Contains(p.Id)))
+                        {
+                            model.Files.Add(PrepareMediaFileInfo(file, model));
+                        }
                     }
 
                     // Plus images belonging to selected combination.
@@ -1164,6 +1156,12 @@ namespace Smartstore.Web.Controllers
                                 defaultFile = file;
                             }
                         }
+                    }
+
+                    if (model.Files.Count == 0)
+                    {
+                        // No combination exists for the selection and all images are assigned to combinations.
+                        model.Files.Add(PrepareMediaFileInfo(files[0], model));
                     }
                 }
 
@@ -1210,7 +1208,6 @@ namespace Smartstore.Web.Controllers
                         .Where(x =>
                             (x.ShowOnProductPage == null && x.SpecificationAttributeOption?.SpecificationAttribute?.ShowOnProductPage == true) ||
                             (x.ShowOnProductPage == true))
-                        .OrderBy(x => x.DisplayOrder)
                         .ToList();
                 }
                 else
@@ -1223,6 +1220,9 @@ namespace Smartstore.Web.Controllers
                 }
 
                 return attrs
+                    .OrderBy(x => x.DisplayOrder)
+                    .ThenBy(x => x.SpecificationAttributeOption.SpecificationAttribute.DisplayOrder)
+                    .ThenBy(x => x.SpecificationAttributeOption.SpecificationAttribute.Name)
                     .Select(x => new ProductSpecificationModel
                     {
                         SpecificationAttributeId = x.SpecificationAttributeOption.SpecificationAttributeId,
@@ -1235,46 +1235,31 @@ namespace Smartstore.Web.Controllers
 
         public async Task PrepareProductReviewsModelAsync(ProductReviewsModel model, Product product, int? take = null)
         {
-            Guard.NotNull(product, nameof(product));
-            Guard.NotNull(model, nameof(model));
+            Guard.NotNull(product);
+            Guard.NotNull(model);
 
             model.ProductId = product.Id;
             model.ProductName = product.GetLocalized(x => x.Name);
             model.ProductSeName = await product.GetActiveSlugAsync();
+            model.CanCurrentCustomerLeaveReview = _catalogSettings.AllowAnonymousUsersToReviewProduct || !_services.WorkContext.CurrentCustomer.IsGuest();
+            model.DisplayCaptcha = _captchaSettings.CanDisplayCaptcha && _captchaSettings.ShowOnProductReviewPage;
+            model.ShowVerfiedPurchaseBadge = _catalogSettings.ShowVerfiedPurchaseBadge;
 
-            product = _db.FindTracked<Product>(product.Id) ?? product;
+            await _db.LoadCollectionAsync(product, x => x.ProductReviews, false, q => q
+                .Include(x => x.Customer)
+                .ThenInclude(x => x.CustomerRoleMappings)
+                .ThenInclude(x => x.CustomerRole));
 
-            // TODO: (mh) (core) Use LoadCollectionAsync
-            var collectionLoaded = _db.IsCollectionLoaded(product, x => x.ProductReviews, out var collectionEntry);
+            model.TotalReviewsCount = product.ProductReviews.Count(x => x.IsApproved);
 
-            if (!collectionLoaded)
+            var reviews = product.ProductReviews
+                .Where(x => x.IsApproved)
+                .OrderByDescending(x => x.CreatedOnUtc)
+                .Take(take ?? int.MaxValue)
+                .ToList();
+
+            if (reviews.Count > 0)
             {
-                _db.Attach(product);
-            }
-
-            // We need the query for total count resolution.
-            var query = collectionEntry
-                .Query()
-                .Where(x => x.IsApproved);
-
-            model.TotalReviewsCount = collectionLoaded
-                ? product.ProductReviews.Count
-                : await query.CountAsync();
-
-            if (model.TotalReviewsCount > 0)
-            {
-                query = query.OrderByDescending(x => x.CreatedOnUtc);
-
-                if (take.HasValue)
-                {
-                    query = query.Take(take.Value);
-                }
-
-                // TODO: (mh) (core) Inlcude CustomerRoles
-                var reviews = collectionLoaded
-                    ? product.ProductReviews.Take(take ?? int.MaxValue).ToList()
-                    : await query.Include(x => x.Customer).ToListAsync();
-
                 var unverifiedCustomerIds = reviews
                     .Where(x => x.IsVerifiedPurchase == null)
                     .ToDistinctArray(x => x.CustomerId);
@@ -1287,7 +1272,8 @@ namespace Smartstore.Web.Controllers
                 foreach (var review in reviews)
                 {
                     var writtenOn = _services.DateTimeHelper.ConvertToUserTime(review.CreatedOnUtc, DateTimeKind.Utc);
-                    var reviewModel = new ProductReviewModel
+
+                    model.Items.Add(new()
                     {
                         Id = review.Id,
                         CustomerId = review.CustomerId,
@@ -1296,7 +1282,7 @@ namespace Smartstore.Web.Controllers
                         Title = review.Title,
                         ReviewText = review.ReviewText,
                         Rating = review.Rating,
-                        Helpfulness = new ProductReviewHelpfulnessModel
+                        Helpfulness = new()
                         {
                             ProductReviewId = review.Id,
                             HelpfulYesTotal = review.HelpfulYesTotal,
@@ -1306,15 +1292,9 @@ namespace Smartstore.Web.Controllers
                         IsVerifiedPurchase = review.IsVerifiedPurchase ?? orderCustomerIds.Contains(review.CustomerId),
                         WrittenOnStr = writtenOn.ToString("M") + ' ' + writtenOn.ToString("yyyy"),
                         WrittenOn = review.CreatedOnUtc
-                    };
-
-                    model.Items.Add(reviewModel);
+                    });
                 }
             }
-
-            model.CanCurrentCustomerLeaveReview = _catalogSettings.AllowAnonymousUsersToReviewProduct || !_services.WorkContext.CurrentCustomer.IsGuest();
-            model.DisplayCaptcha = _captchaSettings.CanDisplayCaptcha && _captchaSettings.ShowOnProductReviewPage;
-            model.ShowVerfiedPurchaseBadge = _catalogSettings.ShowVerfiedPurchaseBadge;
         }
 
         private MediaFileInfo PrepareMediaFileInfo(MediaFileInfo file, MediaGalleryModel model)

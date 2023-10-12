@@ -124,14 +124,10 @@ namespace Smartstore.Web.Controllers
             }
 
             // Products.
-            var catIds = new int[] { categoryId };
-            if (_catalogSettings.ShowProductsFromSubcategories)
-            {
-                // Include subcategories.
-                catIds = catIds.Concat(await _helper.GetChildCategoryIdsAsync(categoryId)).ToArray();
-            }
-
-            query.WithCategoryIds(_catalogSettings.IncludeFeaturedProductsInNormalLists ? null : false, catIds);
+            var featuredOnly = _catalogSettings.IncludeFeaturedProductsInNormalLists ? (bool?)null : false;
+            query = _catalogSettings.ShowProductsFromSubcategories
+                ? query.WithCategoryTreePath(category.TreePath, featuredOnly)
+                : query.WithCategoryIds(featuredOnly, new[] { categoryId });
 
             var searchResult = await _catalogSearchService.SearchAsync(query);
             model.SearchResult = searchResult;
@@ -312,7 +308,7 @@ namespace Smartstore.Web.Controllers
             var templateViewPath = await Services.Cache.GetAsync(templateCacheKey, async () =>
             {
                 var template = await _db.ManufacturerTemplates.FindByIdAsync(manufacturer.ManufacturerTemplateId, false)
-                    ?? await _db.ManufacturerTemplates.FirstOrDefaultAsync();
+                    ?? await _db.ManufacturerTemplates.AsNoTracking().OrderBy(x => x.DisplayOrder).FirstOrDefaultAsync();
 
                 return template.ViewPath;
             });
@@ -478,7 +474,7 @@ namespace Smartstore.Web.Controllers
 
             var result = await _catalogSearchService.SearchAsync(query);
             var hits = await result.GetHitsAsync();
-            var storeUrl = store.GetHost();
+            var storeUrl = store.GetBaseUrl();
 
             // Prefetching.
             var fileIds = hits
@@ -678,12 +674,14 @@ namespace Smartstore.Web.Controllers
         [ActionName("ClearCompareList")]
         public IActionResult ClearCompareListAjax()
         {
-            _productCompareService.ClearCompareList();
+            if (_catalogSettings.CompareProductsEnabled)
+            {
+                _productCompareService.ClearCompareList();
+            }
 
             return Json(new
             {
-                success = true,
-                message = T("CompareList.ListWasCleared")
+                success = true
             });
         }
 

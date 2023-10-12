@@ -1,17 +1,74 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿#nullable enable
+
+using System.ComponentModel;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Catalog.Search.Modelling;
-using Smartstore.Core.Common;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Search;
 
 namespace Smartstore.Core.Catalog.Search
 {
-    [ModelBinder(typeof(CatalogSearchQueryModelBinder))]
-    [ValidateNever]
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class KnownFilterNames : IHideObjectMembers
+    {
+        internal KnownFilterNames() { }
+        public readonly string ProductId = "id";
+        public readonly string Name = "name";
+        public readonly string Sku = "sku";
+        public readonly string ShortDescription = "shortdescription";
+        public readonly string CategoryId = "categoryid";
+        public readonly string FeaturedCategoryId = "featuredcategoryid";
+        public readonly string NotFeaturedCategoryId = "notfeaturedcategoryid";
+        public readonly string ManufacturerId = "manufacturerid";
+        public readonly string FeaturedManufacturerId = "featuredmanufacturerid";
+        public readonly string NotFeaturedManufacturerId = "notfeaturedmanufacturerid";
+        public readonly string CategoryPath = "categorypath";
+        public readonly string FeaturedCategoryPath = "featuredcategorypath";
+        public readonly string NotFeaturedCategoryPath = "notfeaturedcategorypath";
+        public readonly string TagId = "tagid";
+        public readonly string DeliveryId = "deliveryid";
+        public readonly string ParentId = "parentid";
+        public readonly string Condition = "condition";
+        public readonly string StockQuantity = "stockquantity";
+        public readonly string Rating = "rating";
+        public readonly string CreatedOn = "createdon";
+        public readonly string Price = "price";
+        public readonly string IsPublished = "published";
+        public readonly string Visibility = "visibility";
+        public readonly string ShowOnHomepage = "showonhomepage";
+        public readonly string IsDownload = "download";
+        public readonly string IsRecurring = "recurring";
+        public readonly string IsShippingEnabled = "shipenabled";
+        public readonly string IsFreeShipping = "shipfree";
+        public readonly string IsTaxExempt = "taxexempt";
+        public readonly string IsEsd = "esd";
+        public readonly string HasDiscount = "discount";
+        public readonly string TypeId = "typeid";
+        public readonly string StoreId = "storeid";
+        public readonly string IsAvailable = "available";
+        public readonly string AvailableStart = "availablestart";
+        public readonly string AvailableEnd = "availableend";
+        public readonly string RoleId = "roleid";
+    }
+
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class KnownSortingNames : IHideObjectMembers
+    {
+        internal KnownSortingNames() { }
+        public readonly string Name = "name";
+        public readonly string Price = "price";
+        public readonly string CreatedOn = "createdon";
+        public readonly string ParentId = "parentid";
+    }
+
+    [ValidateNever, ModelBinder(typeof(CatalogSearchQueryModelBinder))]
     public partial class CatalogSearchQuery : SearchQuery<CatalogSearchQuery>, ICloneable<CatalogSearchQuery>
     {
+        public static KnownFilterNames KnownFilters = new();
+        public static KnownSortingNames KnownSortings = new();
+
         private readonly static Func<DbSet<Product>, int[], Task<List<Product>>> _defaultHitsFactory = (dbSet, ids)
             => dbSet.SelectSummary().GetManyAsync(ids);
 
@@ -21,7 +78,7 @@ namespace Smartstore.Core.Catalog.Search
         /// Initializes a new instance of the <see cref="CatalogSearchQuery"/> class without a search term being set
         /// </summary>
         public CatalogSearchQuery()
-            : base((string[])null, null)
+            : base((string[])null!, null)
         {
         }
 
@@ -35,6 +92,12 @@ namespace Smartstore.Core.Catalog.Search
         {
         }
 
+        /// <summary>
+        /// Returns a new <see cref="CatalogSearchQuery"/> instance that is a memberwise copy of this query.
+        /// </summary>
+        /// <remarks>
+        /// This creates a shallow copy of the original query! If you clear the filters of the clone, you also clear the filters of the original query.
+        /// </remarks>
         public CatalogSearchQuery Clone()
             => (CatalogSearchQuery)MemberwiseClone();
 
@@ -77,15 +140,15 @@ namespace Smartstore.Core.Catalog.Search
             {
                 case ProductSortingEnum.CreatedOnAsc:
                 case ProductSortingEnum.CreatedOn:
-                    return SortBy(SearchSort.ByDateTimeField("createdon", sort == ProductSortingEnum.CreatedOn));
+                    return SortBy(SearchSort.ByDateTimeField(KnownSortings.CreatedOn, sort == ProductSortingEnum.CreatedOn));
 
                 case ProductSortingEnum.NameAsc:
                 case ProductSortingEnum.NameDesc:
-                    return SortBy(SearchSort.ByStringField("name", sort == ProductSortingEnum.NameDesc));
+                    return SortBy(SearchSort.ByStringField(KnownSortings.Name, sort == ProductSortingEnum.NameDesc));
 
                 case ProductSortingEnum.PriceAsc:
                 case ProductSortingEnum.PriceDesc:
-                    return SortBy(SearchSort.ByDoubleField("price", sort == ProductSortingEnum.PriceDesc));
+                    return SortBy(SearchSort.ByDoubleField(KnownSortings.Price, sort == ProductSortingEnum.PriceDesc));
 
                 case ProductSortingEnum.Relevance:
                     return SortBy(SearchSort.ByRelevance());
@@ -134,7 +197,9 @@ namespace Smartstore.Core.Catalog.Search
                 if (roleIds.Any())
                 {
                     roleIds.Insert(0, 0);
-                    return WithFilter(SearchFilter.Combined(roleIds.Select(x => SearchFilter.ByField("roleid", x).ExactMatch().NotAnalyzed()).ToArray()));
+                    return WithFilter(SearchFilter.Combined(
+                        KnownFilters.RoleId, 
+                        roleIds.Select(x => SearchFilter.ByField(KnownFilters.RoleId, x).ExactMatch().NotAnalyzed()).ToArray()));
                 }
             }
 
@@ -143,7 +208,7 @@ namespace Smartstore.Core.Catalog.Search
 
         public CatalogSearchQuery PublishedOnly(bool value)
         {
-            return WithFilter(SearchFilter.ByField("published", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.IsPublished, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         /// <summary>
@@ -151,7 +216,7 @@ namespace Smartstore.Core.Catalog.Search
         /// </summary>
         public CatalogSearchQuery AvailableOnly(bool value)
         {
-            return WithFilter(SearchFilter.ByField("available", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.IsAvailable, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         /// <summary>
@@ -163,13 +228,13 @@ namespace Smartstore.Core.Catalog.Search
 
             if (value)
             {
-                WithFilter(SearchFilter.ByRange("availablestart", null, utcNow, false, false).Mandatory().NotAnalyzed());
-                WithFilter(SearchFilter.ByRange("availableend", utcNow, null, false, false).Mandatory().NotAnalyzed());
+                WithFilter(SearchFilter.ByRange(KnownFilters.AvailableStart, null, utcNow, false, false).Mandatory().NotAnalyzed());
+                WithFilter(SearchFilter.ByRange(KnownFilters.AvailableEnd, utcNow, null, false, false).Mandatory().NotAnalyzed());
             }
             else
             {
-                WithFilter(SearchFilter.ByRange("availablestart", utcNow, null, false, false).Mandatory().NotAnalyzed());
-                WithFilter(SearchFilter.ByRange("availableend", null, utcNow, false, false).Mandatory().NotAnalyzed());
+                WithFilter(SearchFilter.ByRange(KnownFilters.AvailableStart, utcNow, null, false, false).Mandatory().NotAnalyzed());
+                WithFilter(SearchFilter.ByRange(KnownFilters.AvailableEnd, null, utcNow, false, false).Mandatory().NotAnalyzed());
             }
 
             return this;
@@ -177,12 +242,12 @@ namespace Smartstore.Core.Catalog.Search
 
         public CatalogSearchQuery WithVisibility(ProductVisibility value)
         {
-            return WithFilter(SearchFilter.ByField("visibility", (int)value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.Visibility, (int)value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery HasParentGroupedProduct(params int[] parentProductIds)
         {
-            return CreateFilter("parentid", parentProductIds);
+            return CreateFilter(KnownFilters.ParentId, parentProductIds);
         }
 
         public override CatalogSearchQuery HasStoreId(int id)
@@ -197,9 +262,9 @@ namespace Smartstore.Core.Catalog.Search
             }
             else
             {
-                WithFilter(SearchFilter.Combined(
-                    SearchFilter.ByField("storeid", 0).ExactMatch().NotAnalyzed(),
-                    SearchFilter.ByField("storeid", id).ExactMatch().NotAnalyzed())
+                WithFilter(SearchFilter.Combined(KnownFilters.StoreId,
+                    SearchFilter.ByField(KnownFilters.StoreId, 0).ExactMatch().NotAnalyzed(),
+                    SearchFilter.ByField(KnownFilters.StoreId, id).ExactMatch().NotAnalyzed())
                 );
             }
 
@@ -208,12 +273,12 @@ namespace Smartstore.Core.Catalog.Search
 
         public CatalogSearchQuery IsProductType(ProductType type)
         {
-            return WithFilter(SearchFilter.ByField("typeid", (int)type).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.TypeId, (int)type).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery WithProductIds(params int[] ids)
         {
-            return CreateFilter("id", ids);
+            return CreateFilter(KnownFilters.ProductId, ids);
         }
 
         public CatalogSearchQuery WithProductId(int? fromId, int? toId)
@@ -223,25 +288,57 @@ namespace Smartstore.Core.Catalog.Search
                 return this;
             }
 
-            return WithFilter(SearchFilter.ByRange("id", fromId, toId, fromId.HasValue, toId.HasValue).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(
+                SearchFilter.ByRange(
+                    KnownFilters.ProductId, fromId, toId, fromId.HasValue, toId.HasValue).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         /// <summary>
-        /// Filter by category identifiers.
+        /// Filter products by category identifiers.
+        /// For a large number of category IDs, it is recommended to use <see cref="WithCategoryTreePath(string, bool?, bool)"/> because it is faster.
         /// </summary>
         /// <param name="featuredOnly">
-        /// A value indicating whether loaded products are marked as featured (relates only to categories and manufacturers). 
+        /// A value indicating whether loaded products are marked as "featured" at their category assignment.
         /// <c>false</c> to load featured products only, <c>true</c> to load unfeatured products only, <c>null</c> to load all products.
         /// </param>
         /// <param name="ids">The category identifiers.</param>
         /// <returns>Search query.</returns>
+        /// <remarks>
+        /// Use <see cref="WithCategoryIds(bool?, int[])"/> or <see cref="WithCategoryTreePath(string, bool?, bool)"/>, but not both together.
+        /// Both do the same thing (filter products based on their category assignments), just in different ways.
+        /// </remarks>
         public CatalogSearchQuery WithCategoryIds(bool? featuredOnly, params int[] ids)
         {
             var fieldName = featuredOnly.HasValue
-                ? featuredOnly.Value ? "featuredcategoryid" : "notfeaturedcategoryid"
-                : "categoryid";
+                ? featuredOnly.Value ? KnownFilters.FeaturedCategoryId : KnownFilters.NotFeaturedCategoryId
+                : KnownFilters.CategoryId;
 
             return CreateFilter(fieldName, ids);
+        }
+
+        /// <summary>
+        /// Filter products by category tree path.
+        /// For a large number of category assignments, this method is faster than <see cref="WithCategoryIds(bool?, int[])"/>.
+        /// </summary>
+        /// <param name="treePath">The parent's tree path to get descendants from.</param>
+        /// <param name="featuredOnly">
+        /// A value indicating whether loaded products are marked as "featured" at their category assignment.
+        /// <c>false</c> to load featured products only, <c>true</c> to load unfeatured products only, <c>null</c> to load all products.
+        /// </param>
+        /// <param name="includeSelf"><c>true</c> = add the parent node to the result list, <c>false</c> = ignore the parent node.</param>
+        /// <returns>Search query.</returns>
+        /// <remarks>
+        /// Use <see cref="WithCategoryIds(bool?, int[])"/> or <see cref="WithCategoryTreePath(string, bool?, bool)"/>, but not both together.
+        /// Both do the same thing (filter products based on their category assignments), just in different ways.
+        /// </remarks>
+        public CatalogSearchQuery WithCategoryTreePath(string treePath, bool? featuredOnly, bool includeSelf = true)
+        {
+            if (treePath.HasValue())
+            {
+                WithFilter(new CategoryTreePathFilter(treePath, featuredOnly, includeSelf));
+            }
+
+            return this;
         }
 
         /// <remarks>Includes only published categories.</remarks>
@@ -249,19 +346,19 @@ namespace Smartstore.Core.Catalog.Search
         {
             if (value)
             {
-                return WithFilter(SearchFilter.ByRange("categoryid", 1, int.MaxValue, true, true).Mandatory().NotAnalyzed());
+                return WithFilter(SearchFilter.ByRange(KnownFilters.CategoryId, 1, int.MaxValue, true, true).Mandatory().NotAnalyzed());
             }
             else
             {
-                return WithFilter(SearchFilter.ByField("categoryid", 0).Mandatory().ExactMatch().NotAnalyzed());
+                return WithFilter(SearchFilter.ByField(KnownFilters.CategoryId, 0).Mandatory().ExactMatch().NotAnalyzed());
             }
         }
 
         public CatalogSearchQuery WithManufacturerIds(bool? featuredOnly, params int[] ids)
         {
             var fieldName = featuredOnly.HasValue
-                ? featuredOnly.Value ? "featuredmanufacturerid" : "notfeaturedmanufacturerid"
-                : "manufacturerid";
+                ? featuredOnly.Value ? KnownFilters.FeaturedManufacturerId : KnownFilters.NotFeaturedManufacturerId
+                : KnownFilters.ManufacturerId;
 
             return CreateFilter(fieldName, ids);
         }
@@ -271,22 +368,22 @@ namespace Smartstore.Core.Catalog.Search
         {
             if (value)
             {
-                return WithFilter(SearchFilter.ByRange("manufacturerid", 1, int.MaxValue, true, true).Mandatory().NotAnalyzed());
+                return WithFilter(SearchFilter.ByRange(KnownFilters.ManufacturerId, 1, int.MaxValue, true, true).Mandatory().NotAnalyzed());
             }
             else
             {
-                return WithFilter(SearchFilter.ByField("manufacturerid", 0).Mandatory().ExactMatch().NotAnalyzed());
+                return WithFilter(SearchFilter.ByField(KnownFilters.ManufacturerId, 0).Mandatory().ExactMatch().NotAnalyzed());
             }
         }
 
         public CatalogSearchQuery WithProductTagIds(params int[] ids)
         {
-            return CreateFilter("tagid", ids);
+            return CreateFilter(KnownFilters.TagId, ids);
         }
 
         public CatalogSearchQuery WithDeliveryTimeIds(params int[] ids)
         {
-            return CreateFilter("deliveryid", ids);
+            return CreateFilter(KnownFilters.DeliveryId, ids);
         }
 
         public CatalogSearchQuery WithCondition(params ProductCondition[] conditions)
@@ -296,10 +393,13 @@ namespace Smartstore.Core.Catalog.Search
             {
                 if (len == 1)
                 {
-                    return WithFilter(SearchFilter.ByField("condition", (int)conditions[0]).Mandatory().ExactMatch().NotAnalyzed());
+                    return WithFilter(SearchFilter.ByField(KnownFilters.Condition, (int)conditions![0]).Mandatory().ExactMatch().NotAnalyzed());
                 }
 
-                return WithFilter(SearchFilter.Combined(conditions.Select(x => SearchFilter.ByField("condition", (int)x).ExactMatch().NotAnalyzed()).ToArray()));
+                return WithFilter(
+                    SearchFilter.Combined(
+                        KnownFilters.Condition, 
+                        conditions!.Select(x => SearchFilter.ByField(KnownFilters.Condition, (int)x).ExactMatch().NotAnalyzed()).ToArray()));
             }
 
             return this;
@@ -307,42 +407,42 @@ namespace Smartstore.Core.Catalog.Search
 
         public CatalogSearchQuery HomePageProductsOnly(bool value)
         {
-            return WithFilter(SearchFilter.ByField("showonhomepage", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.ShowOnHomepage, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery DownloadOnly(bool value)
         {
-            return WithFilter(SearchFilter.ByField("download", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.IsDownload, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery RecurringOnly(bool value)
         {
-            return WithFilter(SearchFilter.ByField("recurring", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.IsRecurring, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery ShipEnabledOnly(bool value)
         {
-            return WithFilter(SearchFilter.ByField("shipenabled", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.IsShippingEnabled, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery FreeShippingOnly(bool value)
         {
-            return WithFilter(SearchFilter.ByField("shipfree", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.IsFreeShipping, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery TaxExemptOnly(bool value)
         {
-            return WithFilter(SearchFilter.ByField("taxexempt", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.IsTaxExempt, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery EsdOnly(bool value)
         {
-            return WithFilter(SearchFilter.ByField("esd", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.IsEsd, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery HasDiscount(bool value)
         {
-            return WithFilter(SearchFilter.ByField("discount", value).Mandatory().ExactMatch().NotAnalyzed());
+            return WithFilter(SearchFilter.ByField(KnownFilters.HasDiscount, value).Mandatory().ExactMatch().NotAnalyzed());
         }
 
         public CatalogSearchQuery WithStockQuantity(
@@ -360,12 +460,12 @@ namespace Smartstore.Core.Catalog.Search
             {
                 var forbidden = includeFrom.HasValue && includeTo.HasValue && !includeFrom.Value && !includeTo.Value;
 
-                return WithFilter(SearchFilter.ByField("stockquantity", fromQuantity.Value).Mandatory(!forbidden).ExactMatch().NotAnalyzed());
+                return WithFilter(SearchFilter.ByField(KnownFilters.StockQuantity, fromQuantity.Value).Mandatory(!forbidden).ExactMatch().NotAnalyzed());
             }
             else
             {
                 var filter = SearchFilter.ByRange(
-                    "stockquantity",
+                    KnownFilters.StockQuantity,
                     fromQuantity,
                     toQuantity,
                     includeFrom ?? fromQuantity.HasValue,
@@ -376,8 +476,16 @@ namespace Smartstore.Core.Catalog.Search
         }
 
         public CatalogSearchQuery PriceBetween(
-            Money? fromPrice,
-            Money? toPrice,
+            decimal? fromPrice,
+            decimal? toPrice,
+            bool? includeFrom = null,
+            bool? includeTo = null)
+            => PriceBetween(null, fromPrice, toPrice, includeFrom, includeTo);
+
+        public CatalogSearchQuery PriceBetween(
+            string? currencyCode,
+            decimal? fromPrice,
+            decimal? toPrice,
             bool? includeFrom = null,
             bool? includeTo = null)
         {
@@ -386,7 +494,15 @@ namespace Smartstore.Core.Catalog.Search
                 return this;
             }
 
-            Guard.NotEmpty(CurrencyCode, nameof(CurrencyCode));
+            if (currencyCode.HasValue())
+            {
+                CurrencyCode = currencyCode;
+            }
+            
+            if (CurrencyCode.IsEmpty())
+            {
+                throw new ArgumentException("A currency code is required to filter by price.", nameof(currencyCode));
+            }
 
             var fieldName = "price_c-" + CurrencyCode.EmptyNull().ToLower();
 
@@ -395,7 +511,7 @@ namespace Smartstore.Core.Catalog.Search
                 var forbidden = includeFrom.HasValue && includeTo.HasValue && !includeFrom.Value && !includeTo.Value;
 
                 return WithFilter(SearchFilter
-                    .ByField(fieldName, decimal.ToDouble(fromPrice.Value.Amount))
+                    .ByField(fieldName, decimal.ToDouble(fromPrice.Value))
                     .Mandatory(!forbidden)
                     .ExactMatch()
                     .NotAnalyzed());
@@ -403,8 +519,8 @@ namespace Smartstore.Core.Catalog.Search
             else
             {
                 var filter = SearchFilter.ByRange(fieldName,
-                    fromPrice.HasValue ? decimal.ToDouble(fromPrice.Value.Amount) : null,
-                    toPrice.HasValue ? decimal.ToDouble(toPrice.Value.Amount) : null,
+                    fromPrice.HasValue ? decimal.ToDouble(fromPrice.Value) : null,
+                    toPrice.HasValue ? decimal.ToDouble(toPrice.Value) : null,
                     includeFrom ?? fromPrice.HasValue,
                     includeTo ?? toPrice.HasValue);
 
@@ -427,12 +543,12 @@ namespace Smartstore.Core.Catalog.Search
             {
                 var forbidden = includeFrom.HasValue && includeTo.HasValue && !includeFrom.Value && !includeTo.Value;
 
-                return WithFilter(SearchFilter.ByField("createdon", fromUtc.Value).Mandatory(!forbidden).ExactMatch().NotAnalyzed());
+                return WithFilter(SearchFilter.ByField(KnownFilters.CreatedOn, fromUtc.Value).Mandatory(!forbidden).ExactMatch().NotAnalyzed());
             }
             else
             {
                 var filter = SearchFilter.ByRange(
-                    "createdon",
+                    KnownFilters.CreatedOn,
                     fromUtc,
                     toUtc,
                     includeFrom ?? fromUtc.HasValue,
@@ -465,12 +581,12 @@ namespace Smartstore.Core.Catalog.Search
             {
                 var forbidden = includeFrom.HasValue && includeTo.HasValue && !includeFrom.Value && !includeTo.Value;
 
-                return WithFilter(SearchFilter.ByField("rating", fromRate.Value).Mandatory(!forbidden).ExactMatch().NotAnalyzed());
+                return WithFilter(SearchFilter.ByField(KnownFilters.Rating, fromRate.Value).Mandatory(!forbidden).ExactMatch().NotAnalyzed());
             }
             else
             {
                 var filter = SearchFilter.ByRange(
-                    "rating",
+                    KnownFilters.Rating,
                     fromRate,
                     toRate,
                     includeFrom ?? fromRate.HasValue,

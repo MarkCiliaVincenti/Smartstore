@@ -1,9 +1,12 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using Autofac;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Smartstore.Core.Installation;
 using Smartstore.Data;
 using Smartstore.Data.Hooks;
 using Smartstore.Data.Migrations;
 using Smartstore.Data.Providers;
+using Smartstore.Threading;
 
 namespace Smartstore.Core.Data
 {
@@ -60,24 +63,31 @@ namespace Smartstore.Core.Data
             }
 
             var currentConString = extension.ConnectionString;
+            var currentCollation = extension.Collation;
+            var attemptedCollation = DataSettings.Instance.Collation;
+
             if (currentConString == null)
             {
-                ChangeConnectionString(attemptedConString);
-            }
+                // No database creation attempt yet
+                ChangeConnectionString(attemptedConString, attemptedCollation);
+           }
             else
             {
-                if (attemptedConString != currentConString)
+                // At least one database creation attempt
+                if (attemptedConString != currentConString || attemptedCollation != currentCollation)
                 {
                     // ConString changed. Refresh!
-                    ChangeConnectionString(attemptedConString);
+                    ChangeConnectionString(attemptedConString, attemptedCollation);
                 }
 
                 DataSettings.Instance.DbFactory?.ConfigureDbContext(builder, attemptedConString);
             }
 
-            void ChangeConnectionString(string value)
+            void ChangeConnectionString(string conString, string collation)
             {
-                extension.ConnectionString = value;
+                extension.ConnectionString = conString;
+                extension.Collation = collation.NullEmpty();
+                
                 ((IDbContextOptionsBuilderInfrastructure)builder).AddOrUpdateExtension(extension);
             }
         }
@@ -92,11 +102,16 @@ namespace Smartstore.Core.Data
         {
             DataSettings.Instance.DbFactory?.CreateModel(modelBuilder);
 
-            var options = this.Options.FindExtension<DbFactoryOptionsExtension>();
+            var options = Options.FindExtension<DbFactoryOptionsExtension>();
             
             if (options.DefaultSchema.HasValue())
             {
                 modelBuilder.HasDefaultSchema(options.DefaultSchema);
+            }
+
+            if (options.Collation.HasValue())
+            {
+                modelBuilder.UseCollation(options.Collation);
             }
 
             CreateModel(modelBuilder, options.ModelAssemblies);

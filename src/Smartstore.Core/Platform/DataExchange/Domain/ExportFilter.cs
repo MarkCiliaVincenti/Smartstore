@@ -23,6 +23,11 @@ namespace Smartstore.Core.DataExchange
         /// </summary>
         public DateTime? CreatedTo { get; set; }
 
+        /// <summary>
+        /// A value indicating whether to load only published or non published entities.
+        /// </summary>
+        public bool? IsPublished { get; set; }
+
         #region Product
 
         /// <summary>
@@ -56,29 +61,30 @@ namespace Smartstore.Core.DataExchange
         public int? AvailabilityMaximum { get; set; }
 
         /// <summary>
-        /// A value indicating whether to load only published or non published products.
+        /// A value indicating whether to load products without any category mapping.
         /// </summary>
-        public bool? IsPublished { get; set; }
+        public bool? WithoutCategories { get; set; }
 
         /// <summary>
         /// Category identifiers.
         /// </summary>
         public int[] CategoryIds { get; set; }
+        public int? CategoryId { get; set; }
 
         /// <summary>
-        /// A value indicating whether to load products without any catgory mapping.
+        /// A value indicating whether products from subcategories should also be filtered.
         /// </summary>
-        public bool? WithoutCategories { get; set; }
-
-        /// <summary>
-        /// Manufacturer identifier.
-        /// </summary>
-        public int? ManufacturerId { get; set; }
+        public bool IncludeSubCategories { get; set; }
 
         /// <summary>
         /// A value indicating whether to load products without any manufacturer mapping.
         /// </summary>
         public bool? WithoutManufacturers { get; set; }
+
+        /// <summary>
+        /// Manufacturer identifier.
+        /// </summary>
+        public int? ManufacturerId { get; set; }
 
         /// <summary>
         /// Identifiers of product tag.

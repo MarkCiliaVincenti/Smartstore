@@ -52,11 +52,14 @@ namespace Smartstore.Web.TagHelpers.Admin
             var content = await output.GetChildContentAsync();
             if (content.IsEmptyOrWhiteSpace)
             {
-                var additionalViewData = new RouteValueDictionary() { ["postfix"] = Postfix };
-                if (output.Attributes.TryGetAttribute("data-toggler-for", out var attr))
+                var additionalViewData = new RouteValueDictionary { ["postfix"] = Postfix };
+
+                if (output.Attributes.TryGetAttribute("data-toggler-for", out var togglerFor))
                 {
                     // TODO: (mh) (core) Find a better solution to pass custom attributes to auto-generated editors.
-                    additionalViewData["htmlAttributes"] = new { data_toggler_for = attr.ValueAsString() };
+                    additionalViewData["htmlAttributes"] = output.Attributes.TryGetAttribute("data-toggler-reverse", out var reverse)
+                        ? new { data_toggler_for = togglerFor.ValueAsString(), data_toggler_reverse = reverse.ValueAsString() }
+                        : new { data_toggler_for = togglerFor.ValueAsString() };
                 }
 
                 output.Content.SetHtmlContent(HtmlHelper.EditorFor(For, Template, additionalViewData));
@@ -100,11 +103,11 @@ namespace Smartstore.Web.TagHelpers.Admin
             var overrideForStore = data.OverriddenKeys.Contains(settingKey);
             var fieldId = settingKey.EnsureEndsWith("_OverrideForStore");
 
-            var switchLabel = new TagBuilder("label");
-            switchLabel.AppendCssClass("switch switch-blue multi-store-override-switch");
+            var switchContainer = new TagBuilder("div");
+            switchContainer.AppendCssClass("form-check form-check-solo form-switch form-switch-lg multi-store-override-switch");
 
             var overrideInput = new TagBuilder("input");
-            overrideInput.Attributes["class"] = "multi-store-override-option";
+            overrideInput.Attributes["class"] = "form-check-input multi-store-override-option";
             overrideInput.Attributes["type"] = "checkbox";
             overrideInput.Attributes["id"] = fieldId.SanitizeHtmlId();
             overrideInput.Attributes["name"] = fieldId;
@@ -116,15 +119,9 @@ namespace Smartstore.Web.TagHelpers.Admin
                 overrideInput.Attributes["checked"] = "checked";
             }
 
-            var toggleSpan = new TagBuilder("span");
-            toggleSpan.AppendCssClass("switch-toggle");
-            toggleSpan.Attributes.Add("data-on", T("Common.On").Value.Truncate(3));
-            toggleSpan.Attributes.Add("data-off", T("Common.Off").Value.Truncate(3));
+            switchContainer.InnerHtml.AppendHtml(overrideInput);
 
-            switchLabel.InnerHtml.AppendHtml(overrideInput);
-            switchLabel.InnerHtml.AppendHtml(toggleSpan);
-
-            return switchLabel;
+            return switchContainer;
         }
     }
 }

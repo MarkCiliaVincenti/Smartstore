@@ -71,6 +71,6 @@ namespace Smartstore.Scheduling
         /// If empty, <paramref name="httpContext"/> is used to auto-resolve the base url.
         /// </param>
         /// <param name="pollInterval">The scheduler endpoint poll interval in minutes.</param>
-        void Activate(string baseUrl, int pollInterval, HttpContext httpContext);
+        Task ActivateAsync(string baseUrl, int pollInterval, HttpContext httpContext);
     }
 }

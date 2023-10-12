@@ -1,20 +1,19 @@
 ﻿@model ProductVariantAttributeCombinationModel
 
-@{
-    async Task TableFormattedVariantAttributes(string formattedVariantAttributes)
+@functions
+{
+    void TableFormattedVariantAttributes(string formattedAttributes)
     {
         string name, value;
-        string[] lines = formattedVariantAttributes.SplitSafe("<br />").ToArray();
-        string separatorValues = ": ";
-
+        string[] lines = formattedAttributes.SplitSafe("<br />").ToArray();
         if (lines.Length <= 0)
             return;
 
         <table class="product-attribute-table">
             @foreach (string line in lines)
-            { 
+            {
                 <tr>
-                    @if (line.SplitToPair(out name, out value, separatorValues))
+                    @if (line.SplitToPair(out name, out value, ": "))
                     {
                         <td class="column-name">@Html.Raw(name):</td>
                         <td class="column-value">@Html.Raw(value)</td>
@@ -32,19 +31,20 @@
 <div asp-validation-summary="ModelOnly"></div>
 
 <input type="hidden" asp-for="Id" />
+<input type="hidden" asp-for="ProductId" />
 
-<div class="well">
-    @if (ViewBag.IsEdit)
-    {
-        await TableFormattedVariantAttributes(Model.AttributesXml);
-    }
-    else
-    {
-        <div id="ProductVariantAttributeContainer">
-            <partial name="_ProductAttributes" model="Model" />
-        </div>
-    }
-</div>
+@if (ViewBag.IsEdit)
+{
+    <div class="well d-flex flex-nowrap">
+        @{ TableFormattedVariantAttributes(Model.AttributesXml); }
+    </div>
+}
+else
+{
+    <div sm-if="Model.ProductVariantAttributes.Count > 0" id="ProductVariantAttributeContainer" class="well">
+        <partial name="_ProductAttributes" model="Model" />
+    </div>
+}
 
 <div sm-if="!ViewBag.IsEdit" id="CombinationExistenceNote">
     <div sm-if="Model.Warnings.Count > 0" class="alert alert-warning">
@@ -212,27 +212,3 @@
         </div>
     </div>
 </div>
-
-<script sm-target-zone="Scripts" data-origin="attribute-combination-popup">
-    $(function () {
-        Smartstore.media.lazyLoadThumbnails($("#assigned-pictures"));
-
-        var container = $('#ProductVariantAttributeContainer');
-        container.find('select').selectWrapper();
-
-        container.change(function () {
-            var note = $('#CombinationExistenceNote');
-			note.empty();
-            container.closest('form').ajax({
-				smallIcon: note,
-				url: '@Url.Action("CombinationExistenceNote", "Product", new { productId = Model.ProductId })',
-				success: function (resp) {
-                    var cls = resp.HasWarning ? 'warning' : 'info';
-                    var html = `<div class="alert alert-${cls}" style="margin:0;">${resp.Message}</div>`;
-
-                    note.html(html);
-				}
-			});
-		});
-	});
-</script>

@@ -33,6 +33,8 @@ namespace Smartstore.Admin.Models.Orders
         [LocalizedDisplay("Admin.Catalog.Attributes.AttributeControlType")]
         public string AttributeControlTypeName { get; set; }
 
+        public bool IsListTypeAttribute { get; set; }
+
         [LocalizedDisplay("Common.DisplayOrder")]
         public int DisplayOrder { get; set; }
 
@@ -48,6 +50,7 @@ namespace Smartstore.Admin.Models.Orders
         public string EditUrl { get; set; }
     }
 
+    [LocalizedDisplay("Admin.Catalog.Attributes.CheckoutAttributes.Fields.")]
     public class CheckoutAttributeLocalizedModel : ILocalizedLocaleModel
     {
         public int LanguageId { get; set; }

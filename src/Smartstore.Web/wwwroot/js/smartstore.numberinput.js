@@ -86,8 +86,8 @@
             $input.on("paste.ni input.ni change.ni focusout.ni", function (e) {
                 var newValue = parseValue($input[0].value);
                 var focusOut = e.type === "focusout";
-                setValue(newValue, focusOut);
-                updateDisplay(newValue, invariant);
+                var updatedValue = setValue(newValue, focusOut);
+                updateDisplay(updatedValue, invariant);
             });
 
             if (props.autoSelect) {
@@ -184,16 +184,20 @@
             function setValue(newValue, updateInput) {
                 if (isNaN(newValue) || newValue === "") {
                     if (updateInput) $input[0].value = "";
-                    value = NaN;
+                    //value = NaN;
+                    //newValue = "";
                 }
                 else {
                     newValue = parseFloat(newValue);
-                    newValue = Math.min(Math.max(newValue, min), max);
+                    // INFO: This should be handled by validation framework or in frontend by native HTML elements.
+                    //newValue = Math.min(Math.max(newValue, min), max);
                     //newValue = Math.round(newValue * Math.pow(10, decimals)) / Math.pow(10, decimals);
                     newValue = newValue.toFixed(decimals);
                     if (updateInput) $input[0].value = newValue;
-                    value = newValue;
+                    //value = newValue;
                 }
+
+                return newValue;
             }
 
             function updateDisplay(newValue, invariant) {

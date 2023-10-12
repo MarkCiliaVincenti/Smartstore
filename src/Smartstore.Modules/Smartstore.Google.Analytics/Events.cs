@@ -1,7 +1,9 @@
 ﻿using DouglasCrockford.JsMin;
 using Microsoft.AspNetCore.Html;
 using Microsoft.AspNetCore.Mvc.ViewComponents;
+using Smartstore.Core.Identity;
 using Smartstore.Core.Widgets;
+using Smartstore.Engine.Modularity;
 using Smartstore.Events;
 using Smartstore.Google.Analytics.Services;
 using Smartstore.Web.Components;
@@ -29,11 +31,22 @@ namespace Smartstore.Google.Analytics
             _widgetProvider = widgetProvider;
         }
 
-        public async Task HandleEventAsync(ViewComponentResultExecutingEvent message)
+        public async Task HandleEventAsync(ViewComponentResultExecutingEvent message, 
+            IProviderManager providerManager, 
+            WidgetSettings widgetSettings,
+            ICookieConsentManager cookieConsentManager)
         {
             // If GoogleId is empty or is default don't render anything. Also if catalog scripts are configured not to be rendered.
             if (!_settings.GoogleId.HasValue() || _settings.GoogleId == "UA-0000000-0" || !_settings.RenderCatalogScripts)
+            {
                 return;
+            }
+
+            // If user has not accepted the cookie consent don't render anything.
+            if (_settings.RenderWithUserConsentOnly && !await cookieConsentManager.IsCookieAllowedAsync(CookieType.Analytics))
+            {
+                return;
+            }
 
             var componentType = message.Descriptor.TypeInfo.AsType();
 
@@ -43,6 +56,12 @@ namespace Smartstore.Google.Analytics
             }
             else if (message.Result is ViewViewComponentResult viewResult && viewResult.ViewData.Model is ProductSummaryModel model)
             {
+                // Only render when module is active.
+                var widget = providerManager.GetProvider<IActivatableWidget>("Smartstore.Google.Analytics");
+
+                if (widget == null || !widget.IsWidgetActive(widgetSettings))
+                    return;
+
                 var productList = model.Items;
                 var componentName = message.Descriptor.ShortName;
 

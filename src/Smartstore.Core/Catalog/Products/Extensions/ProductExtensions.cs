@@ -12,7 +12,7 @@ namespace Smartstore.Core.Catalog.Products
         /// <param name="combination">Source attribute combination.</param>
         public static void MergeWithCombination(this Product product, ProductVariantAttributeCombination combination)
         {
-            Guard.NotNull(product, nameof(product));
+            Guard.NotNull(product);
 
             var values = product.MergedDataValues;
 
@@ -114,7 +114,7 @@ namespace Smartstore.Core.Catalog.Products
                     {
                         stockMessage = localizationService.GetResource("Products.Availability.OutOfStock");
                     }
-                    else if (product.BackorderMode == BackorderMode.AllowQtyBelow0AndNotifyCustomer)
+                    else if (product.BackorderMode == BackorderMode.AllowQtyBelow0OnBackorder)
                     {
                         stockMessage = localizationService.GetResource("Products.Availability.Backordering");
                     }
@@ -196,13 +196,47 @@ namespace Smartstore.Core.Catalog.Products
         /// <returns>List of allowed quantities.</returns>
 		public static int[] ParseAllowedQuantities(this Product product)
         {
-            Guard.NotNull(product, nameof(product));
+            Guard.NotNull(product);
+
+            if (product.AllowedQuantities.IsEmpty())
+            {
+                return Array.Empty<int>();
+            }
 
             return product.AllowedQuantities
                 .SplitSafe(',', StringSplitOptions.TrimEntries)
                 .Select(x => int.TryParse(x, out var quantity) ? quantity : int.MaxValue)
                 .Where(x => x != int.MaxValue)
+                .OrderBy(x => x)
                 .ToArray();
+        }
+
+        /// <summary>
+        /// Gets the lowest possible order quantity for a given product,
+        /// which is either <see cref="Product.OrderMinimumQuantity"/> or the first item
+        /// in <see cref="Product.AllowedQuantities" />.
+        /// </summary>
+        /// <param name="product">The product to get min order quantity for.</param>
+        public static int GetMinOrderQuantity(this Product product)
+        {
+            Guard.NotNull(product);
+
+            var allowedQuantities = ParseAllowedQuantities(product);
+            return Math.Max(1, allowedQuantities.Length > 0 ? allowedQuantities[0] : product.OrderMinimumQuantity);
+        }
+
+        /// <summary>
+        /// Gets the highest possible order quantity for a given product,
+        /// which is either <see cref="Product.OrderMaximumQuantity"/> or the last item
+        /// in <see cref="Product.AllowedQuantities" />.
+        /// </summary>
+        /// <param name="product">The product to get min order quantity for.</param>
+        public static int GetMaxOrderQuantity(this Product product)
+        {
+            Guard.NotNull(product);
+
+            var allowedQuantities = ParseAllowedQuantities(product);
+            return allowedQuantities.Length > 0 ? allowedQuantities.Last() : product.OrderMaximumQuantity;
         }
 
         /// <summary>

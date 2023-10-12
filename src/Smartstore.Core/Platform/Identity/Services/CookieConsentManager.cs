@@ -1,9 +1,11 @@
-﻿using Autofac;
+﻿using System.Net;
+using Autofac;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
+using Smartstore.Core.Common.Services;
+using Smartstore.Core.Data;
 using Smartstore.Core.Localization;
 using Smartstore.Core.Web;
-using Smartstore.Engine.Modularity;
 using Smartstore.Net;
 
 namespace Smartstore.Core.Identity
@@ -13,24 +15,70 @@ namespace Smartstore.Core.Identity
         private readonly static object _lock = new();
         private static IList<Type> _cookiePublisherTypes = null;
 
+        private readonly SmartDbContext _db;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IWebHelper _webHelper;
         private readonly ITypeScanner _typeScanner;
         private readonly PrivacySettings _privacySettings;
         private readonly IComponentContext _componentContext;
+        private readonly IGeoCountryLookup _countryLookup;
+
+        private bool? _isCookieConsentRequired;
 
         public CookieConsentManager(
+            SmartDbContext db,
             IHttpContextAccessor httpContextAccessor,
             IWebHelper webHelper,
             ITypeScanner typeScanner,
             PrivacySettings privacySettings,
-            IComponentContext componentContext)
+            IComponentContext componentContext,
+            IGeoCountryLookup countryLookup)
         {
+            _db = db;
             _httpContextAccessor = httpContextAccessor;
             _webHelper = webHelper;
             _typeScanner = typeScanner;
             _privacySettings = privacySettings;
             _componentContext = componentContext;
+            _countryLookup = countryLookup;
+        }
+
+        public async Task<bool> IsCookieConsentRequiredAsync()
+        {
+            return _isCookieConsentRequired ??= await IsCookieConsentRequiredCoreAsync(_webHelper.GetClientIpAddress());
+        }
+
+        protected virtual async Task<bool> IsCookieConsentRequiredCoreAsync(IPAddress ipAddress)
+        {
+            if (_privacySettings.CookieConsentRequirement == CookieConsentRequirement.NeverRequired)
+            {
+                return false;
+            }
+            else 
+            {
+                var geoCountry = _countryLookup.LookupCountry(ipAddress);
+                if (geoCountry != null)
+                {
+                    if (_privacySettings.CookieConsentRequirement == CookieConsentRequirement.DependsOnCountry)
+                    {           
+                        var country = await _db.Countries
+                            .AsNoTracking()
+                            .ApplyIsoCodeFilter(geoCountry.IsoCode)
+                            .FirstOrDefaultAsync();
+
+                        if (country != null && !country.DisplayCookieManager)
+                        {
+                            return true;
+                        }
+                    }
+                    else if (_privacySettings.CookieConsentRequirement == CookieConsentRequirement.RequiredInEUCountriesOnly)
+                    {
+                        return geoCountry.IsInEu; 
+                    }
+                }
+            }
+            
+            return true;
         }
 
         public virtual async Task<IList<CookieInfo>> GetCookieInfosAsync(bool withUserCookies = false)
@@ -80,9 +128,14 @@ namespace Smartstore.Core.Identity
             return new List<CookieInfo>();
         }
 
-        public virtual bool IsCookieAllowed(CookieType cookieType)
+        public virtual async Task<bool> IsCookieAllowedAsync(CookieType cookieType)
         {
-            Guard.NotNull(cookieType, nameof(cookieType));
+            Guard.NotNull(cookieType);
+
+            if (!await IsCookieConsentRequiredAsync())
+            {
+                return true;
+            }
 
             var request = _httpContextAccessor?.HttpContext?.Request;
             if (request != null && request.Cookies.TryGetValue(CookieNames.CookieConsent, out var value) && value.HasValue())
@@ -182,9 +235,9 @@ namespace Smartstore.Core.Identity
             var cookiePublishers = _cookiePublisherTypes
                 .Select(type =>
                 {
-                    if (typeof(ModuleBase).IsAssignableFrom(type) && _componentContext.TryResolve(type, out var module))
+                    if (_componentContext.IsRegistered(type) && _componentContext.TryResolve(type, out var publisher))
                     {
-                        return (ICookiePublisher)module;
+                        return (ICookiePublisher)publisher;
                     }
 
                     return _componentContext.ResolveUnregistered(type) as ICookiePublisher;

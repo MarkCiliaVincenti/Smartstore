@@ -1,8 +1,6 @@
-/// <reference path="_variables-shared.scss" />
-/// <reference path="_mixins.scss" />
-/// <reference path="../lib/bs4/scss/bootstrap.scss" />
+/// <reference path="references.scss" />
 
-/* On/Off switch button
+/* On/Off switch button (OBSOLETE --> using .form-switch now)
 -------------------------------------------------------------- */
 
 .switch {
@@ -21,7 +19,7 @@
     --switcher-w: #{$w};
     --switcher-h: #{$h};
     --switch-size: calc(var(--switcher-h) - 4px);
-    --switch-bg-rgb: #{red($orange)}, #{green($orange)}, #{blue($orange)};
+    --switch-bg-rgb: #{to-rgb($orange)};
     position: relative;
     display: inline-block;
     vertical-align: bottom;
@@ -33,7 +31,7 @@
     height: var(--switcher-h);
 
     &.switch-blue {
-        --switch-bg-rgb: #{red($blue)}, #{green($blue)}, #{blue($blue)};
+        --switch-bg-rgb: #{to-rgb($blue)};
     }
 
     .switcher-sm > & {
@@ -51,7 +49,7 @@
         background-color: $gray-200;
         border: 1px solid rgba(#000, 0.15);
         cursor: pointer;
-        transition: background-color 0.2s cubic-bezier(.54,1.85,.5,1), box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out;
+        transition: background-color 0.2s $ease-out-back, box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out;
 
         &:before {
             // The circle (off)
@@ -64,7 +62,7 @@
             border-radius: 50%;
             background-color: #fff;
             box-shadow: 0 0 3px rgba(#000, 0.2);
-            transition: left 0.2s cubic-bezier(.54,1.85,.5,1);
+            transition: left 0.2s $ease-out-back;
         }
     }
 

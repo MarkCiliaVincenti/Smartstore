@@ -25,10 +25,10 @@
         },
         // switch
         function (ctx) {
-            ctx.find(".adminData > input[type=checkbox], .multi-store-setting-control > input[type=checkbox], .switcher > input[type=checkbox]").each(function (i, el) {
+            ctx.find(".adminData > input[type=checkbox], .multi-store-setting-control > input[type=checkbox]").each(function (i, el) {
                 $(el)
-                    .wrap('<label class="switch"></label>')
-                    .after('<span class="switch-toggle" data-on="' + window.Res['Common.On'] + '" data-off="' + window.Res['Common.Off'] + '"></span>');
+                    .addClass('form-check-input')
+                    .wrap('<div class="form-check form-check-solo form-check-warning form-switch form-switch-lg"></div>');
             });
         },
         // btn-trigger
@@ -49,6 +49,7 @@
                 Smartstore.Admin.checkOverriddenStoreValue(el);
             });
         },
+
         //// Lazy summernote
         //function (ctx) {
         //    ctx.find(".html-editor-root").each(function (i, el) {
@@ -91,23 +92,25 @@
                     "activate": activate
                 },
                 success: function () {
-                    var item = $el.closest(".module-item");
-                    var badge = item.find(".badge");
+                    let item = $el.closest(".module-item");
+                    let signal = item.find(".module-signal");
+                    let btnLabel = $el.find("> span");
 
                     item.toggleClass("inactive", !activate);
 
                     if (activate) {
-                        $el.addClass("btn-secondary btn-to-danger").removeClass("btn-success");
-                        $el.text(T.deactivate);
-                        badge.text(T.active);
-                        badge.addClass("badge-success").removeClass("badge-secondary");
+                        $el.addClass("btn-outline-secondary btn-to-danger").removeClass("btn-success");
+                        btnLabel.text(T.deactivate);
+                        signal.attr('title', T.active);
                     }
                     else {
-                        $el.addClass("btn-success").removeClass("btn-secondary btn-to-danger");
-                        $el.text(T.activate);
-                        badge.text(T.inactive);
-                        badge.addClass("badge-secondary").removeClass("badge-success");
+                        $el.addClass("btn-success").removeClass("btn-outline-secondary btn-to-danger");
+                        btnLabel.text(T.activate);
+                        signal.attr('title', T.inactive);
                     }
+
+                    signal.toggleClass("d-none", !activate);
+                    $el.find("> .bi").toggleClass("d-none", activate);
 
                     $el.attr("data-activate", !activate);
                 }
@@ -244,6 +247,7 @@
             addEventListener('mouseup', onMouseUp);
         });
 
+
         // Popup toggle
         $(document).on('click', '.popup-toggle', function (e) {
             e.preventDefault();
@@ -264,7 +268,6 @@
             // swap classes onload and domready
             html.removeClass("loading").addClass("loaded");
         });
-
     });
 
 

@@ -18,7 +18,9 @@
         /// <summary>
         /// A customer is redirected to a third-party site to complete the payment after (!) the order has been placed.
         /// </summary>
-        /// <remarks>This type of processing is required for older payment types.</remarks>
+        /// <remarks>
+        /// This type of payment is required for older payment methods. It is recommended not to use it for new developments anymore.
+        /// </remarks>
         Redirection = 15,
 
         /// <summary>
@@ -98,7 +100,7 @@
     }
 
     /// <summary>
-    /// The reason for the automatic recording of the payment amount.
+    /// The reason for the automatic capturing of the payment amount.
     /// </summary>
     public enum CapturePaymentReason
     {
@@ -110,6 +112,11 @@
         /// <summary>
         /// Capture payment because the order has been marked as delivered.
         /// </summary>
-        OrderDelivered
+        OrderDelivered,
+
+        /// <summary>
+        /// Capture payment because the order has been marked as completed.
+        /// </summary>
+        OrderCompleted
     }
 }

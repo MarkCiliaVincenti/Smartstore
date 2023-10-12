@@ -4,7 +4,6 @@ using System.Runtime.CompilerServices;
 using Smartstore.Core.Catalog.Categories;
 using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Catalog.Search;
-using Smartstore.Core.Common;
 using Smartstore.Core.Localization;
 using Smartstore.Core.Rules;
 using Smartstore.Core.Search;
@@ -107,7 +106,6 @@ namespace Smartstore.Core.Catalog.Rules
         protected override async Task<IEnumerable<RuleDescriptor>> LoadDescriptorsAsync()
         {
             var language = _services.WorkContext.WorkingLanguage;
-            var currency = _services.WorkContext.WorkingCurrency;
             var oneStarStr = T("Search.Facet.1StarAndMore").Value;
             var xStarsStr = T("Search.Facet.XStarsAndMore").Value;
 
@@ -139,25 +137,41 @@ namespace Smartstore.Core.Catalog.Rules
 
             #region Special filters
 
-            CatalogSearchQuery categoryFilter(SearchFilterContext ctx, int[] x)
+            CatalogSearchQuery categoryFilter(SearchFilterContext ctx, int[] categoryIds)
             {
-                if (x?.Any() ?? false)
+                if (!categoryIds.IsNullOrEmpty())
                 {
-                    var ids = new HashSet<int>(x);
+                    var featuredOnly = _catalogSettings.IncludeFeaturedProductsInNormalLists ? (bool?)null : false;
 
                     if (_catalogSettings.ShowProductsFromSubcategories)
                     {
-                        foreach (var id in x)
+                        if (categoryIds.Length == 1)
                         {
-                            var node = categoryTree.SelectNodeById(id);
+                            var node = categoryTree.SelectNodeById(categoryIds[0]);
                             if (node != null)
                             {
-                                ids.AddRange(node.Flatten(false).Select(y => y.Id));
+                                return ctx.Query.WithCategoryTreePath(node.GetTreePath(), featuredOnly);
                             }
                         }
-                    }
+                        else
+                        {
+                            var ids = new HashSet<int>(categoryIds);
+                            foreach (var id in categoryIds)
+                            {
+                                var node = categoryTree.SelectNodeById(id);
+                                if (node != null)
+                                {
+                                    ids.AddRange(node.Flatten(false).Select(y => y.Id));
+                                }
+                            }
 
-                    return ctx.Query.WithCategoryIds(_catalogSettings.IncludeFeaturedProductsInNormalLists ? (bool?)null : false, ids.ToArray());
+                            return ctx.Query.WithCategoryIds(featuredOnly, ids.ToArray());
+                        }
+                    }
+                    else
+                    {
+                        return ctx.Query.WithCategoryIds(featuredOnly, categoryIds);
+                    }
                 }
 
                 return ctx.Query;
@@ -183,19 +197,17 @@ namespace Smartstore.Core.Catalog.Rules
 
             CatalogSearchQuery priceFilter(SearchFilterContext ctx, decimal x)
             {
-                var price = new Money(x, currency);
-
                 if (ctx.Expression.Operator == RuleOperator.IsEqualTo || ctx.Expression.Operator == RuleOperator.IsNotEqualTo)
                 {
-                    return ctx.Query.PriceBetween(price, price, ctx.Expression.Operator == RuleOperator.IsEqualTo, ctx.Expression.Operator == RuleOperator.IsEqualTo);
+                    return ctx.Query.PriceBetween(x, x, ctx.Expression.Operator == RuleOperator.IsEqualTo, ctx.Expression.Operator == RuleOperator.IsEqualTo);
                 }
                 else if (ctx.Expression.Operator == RuleOperator.GreaterThanOrEqualTo || ctx.Expression.Operator == RuleOperator.GreaterThan)
                 {
-                    return ctx.Query.PriceBetween(price, null, ctx.Expression.Operator == RuleOperator.GreaterThanOrEqualTo, null);
+                    return ctx.Query.PriceBetween(x, null, ctx.Expression.Operator == RuleOperator.GreaterThanOrEqualTo, null);
                 }
                 else if (ctx.Expression.Operator == RuleOperator.LessThanOrEqualTo || ctx.Expression.Operator == RuleOperator.LessThan)
                 {
-                    return ctx.Query.PriceBetween(null, price, null, ctx.Expression.Operator == RuleOperator.LessThanOrEqualTo);
+                    return ctx.Query.PriceBetween(null, x, null, ctx.Expression.Operator == RuleOperator.LessThanOrEqualTo);
                 }
 
                 return ctx.Query;
@@ -434,7 +446,7 @@ namespace Smartstore.Core.Catalog.Rules
                     var variants = await variantsQuery.ToPagedList(++pageIndex, 1000).LoadAsync();
                     foreach (var variant in variants)
                     {
-                        var descriptor = new SearchFilterDescriptor<int[]>((ctx, x) => ctx.Query.WithFilter(SearchFilter.Combined(filters("variantvalueid", variant.Id, x))))
+                        var descriptor = new SearchFilterDescriptor<int[]>((ctx, x) => ctx.Query.WithFilter(SearchFilter.Combined("variantvalueid", filters("variantvalueid", variant.Id, x))))
                         {
                             Name = $"Variant{variant.Id}",
                             DisplayName = variant.GetLocalized(x => x.Name, language, true, false),
@@ -464,7 +476,7 @@ namespace Smartstore.Core.Catalog.Rules
                     var attributes = await attributesQuery.ToPagedList(++pageIndex, 1000).LoadAsync();
                     foreach (var attribute in attributes)
                     {
-                        var descriptor = new SearchFilterDescriptor<int[]>((ctx, x) => ctx.Query.WithFilter(SearchFilter.Combined(filters("attrvalueid", attribute.Id, x))))
+                        var descriptor = new SearchFilterDescriptor<int[]>((ctx, x) => ctx.Query.WithFilter(SearchFilter.Combined("attrvalueid", filters("attrvalueid", attribute.Id, x))))
                         {
                             Name = $"Attribute{attribute.Id}",
                             DisplayName = attribute.GetLocalized(x => x.Name, language, true, false),

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Smartstore.Admin.Models;
+using Smartstore.Caching;
 using Smartstore.ComponentModel;
 using Smartstore.Core.Catalog;
 using Smartstore.Core.Catalog.Categories;
@@ -24,12 +25,14 @@ using Smartstore.Core.Content.Menus;
 using Smartstore.Core.DataExchange;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Localization;
+using Smartstore.Core.Messaging;
 using Smartstore.Core.Rules.Filters;
 using Smartstore.Core.Search;
 using Smartstore.Core.Search.Facets;
 using Smartstore.Core.Security;
 using Smartstore.Core.Seo;
 using Smartstore.Core.Stores;
+using Smartstore.Data.Caching;
 using Smartstore.Engine.Modularity;
 using Smartstore.Web.Modelling.Settings;
 using Smartstore.Web.Models.DataGrid;
@@ -55,6 +58,7 @@ namespace Smartstore.Admin.Controllers
         private readonly IOptions<IdentityOptions> _identityOptions;
         private readonly PrivacySettings _privacySettings;
         private readonly Lazy<ModuleManager> _moduleManager;
+        private readonly ICacheManager _cache;
 
         public SettingController(
             SmartDbContext db,
@@ -72,7 +76,8 @@ namespace Smartstore.Admin.Controllers
             Lazy<IConfigureOptions<IdentityOptions>> identityOptionsConfigurer,
             IOptions<IdentityOptions> identityOptions,
             PrivacySettings privacySettings,
-            Lazy<ModuleManager> moduleManager)
+            Lazy<ModuleManager> moduleManager,
+            ICacheManager cache)
         {
             _db = db;
             _currencyService = currencyService;
@@ -90,6 +95,7 @@ namespace Smartstore.Admin.Controllers
             _identityOptions = identityOptions;
             _privacySettings = privacySettings;
             _moduleManager = moduleManager;
+            _cache = cache;
         }
 
         [Permission(Permissions.Configuration.Setting.Read)]
@@ -235,7 +241,8 @@ namespace Smartstore.Admin.Controllers
             ContactDataSettings contactDataSettings,
             BankConnectionSettings bankConnectionSettings,
             SocialSettings socialSettings,
-            HomePageSettings homePageSettings)
+            HomePageSettings homePageSettings,
+            EmailAccountSettings emailAccountSettings)
         {
             var model = new GeneralCommonSettingsModel();
 
@@ -252,6 +259,7 @@ namespace Smartstore.Admin.Controllers
             MiniMapper.Map(bankConnectionSettings, model.BankConnectionSettings);
             MiniMapper.Map(socialSettings, model.SocialSettings);
             MiniMapper.Map(homePageSettings, model.HomepageSettings);
+            MiniMapper.Map(emailAccountSettings, model.EmailAccountSettings);
 
             #region SEO custom mapping
 
@@ -283,7 +291,7 @@ namespace Smartstore.Admin.Controllers
 
             #endregion
 
-            await PrepareGeneralCommonConfigurationModelAsync();
+            await PrepareGeneralCommonConfigurationModelAsync(emailAccountSettings);
 
             return View(model);
         }
@@ -304,7 +312,8 @@ namespace Smartstore.Admin.Controllers
             ContactDataSettings contactDataSettings,
             BankConnectionSettings bankConnectionSettings,
             SocialSettings socialSettings,
-            HomePageSettings homePageSeoSettings)
+            HomePageSettings homePageSeoSettings,
+            EmailAccountSettings emailAccountSettings)
         {
             if (!ModelState.IsValid)
             {
@@ -320,7 +329,8 @@ namespace Smartstore.Admin.Controllers
                     contactDataSettings,
                     bankConnectionSettings,
                     socialSettings,
-                    homePageSeoSettings);
+                    homePageSeoSettings,
+                    emailAccountSettings);
             }
 
             ModelState.Clear();
@@ -341,13 +351,14 @@ namespace Smartstore.Admin.Controllers
             MiniMapper.Map(model.BankConnectionSettings, bankConnectionSettings);
             MiniMapper.Map(model.SocialSettings, socialSettings);
             MiniMapper.Map(model.HomepageSettings, homePageSeoSettings);
+            MiniMapper.Map(model.EmailAccountSettings, emailAccountSettings);
 
             #region POST mapping
 
             // Set CountryId explicitly else it can't be resetted.
             companySettings.CountryId = model.CompanyInformationSettings.CountryId ?? 0;
 
-            //// (Un)track PDF logo id
+            // (Un)track PDF logo id
             await _mediaTracker.Value.TrackAsync(pdfSettings, prevPdfLogoId, x => x.LogoPictureId);
 
             seoSettings.MetaTitle = model.SeoSettings.MetaTitle;
@@ -412,7 +423,8 @@ namespace Smartstore.Admin.Controllers
             ModelState.Clear();
 
             // We need to clear the sitemap cache if MaxItemsToDisplayInCatalogMenu has changed.
-            if (catalogSettings.MaxItemsToDisplayInCatalogMenu != model.MaxItemsToDisplayInCatalogMenu)
+            if (catalogSettings.MaxItemsToDisplayInCatalogMenu != model.MaxItemsToDisplayInCatalogMenu
+                || catalogSettings.ShowCategoryProductNumberIncludingSubcategories != model.ShowCategoryProductNumberIncludingSubcategories)
             {
                 // Clear cached navigation model.
                 await _menuService.Value.ClearCacheAsync("Main");
@@ -508,7 +520,8 @@ namespace Smartstore.Admin.Controllers
                 || model.PasswordRequireUppercase != settings.PasswordRequireUppercase
                 || model.PasswordRequiredUniqueChars != settings.PasswordRequiredUniqueChars
                 || model.PasswordRequireLowercase != settings.PasswordRequireLowercase
-                || model.PasswordRequireNonAlphanumeric != settings.PasswordRequireNonAlphanumeric)
+                || model.PasswordRequireNonAlphanumeric != settings.PasswordRequireNonAlphanumeric
+                || model.CustomerNameAllowedCharacters != settings.CustomerNameAllowedCharacters)
             {
                 return true;
             }
@@ -847,8 +860,6 @@ namespace Smartstore.Admin.Controllers
 
             await _multiStoreSettingHelper.UpdateSettingsAsync(settings, form);
 
-            await Services.Settings.ApplySettingAsync(settings, x => x.SearchFields);
-
             // Facet settings (CommonFacetSettingsModel).
             if (storeScope != 0)
             {
@@ -976,15 +987,26 @@ namespace Smartstore.Admin.Controllers
         {
             var model = new PaymentSettingsModel
             {
-                CapturePaymentReason = settings.CapturePaymentReason
+                CapturePaymentReason = settings.CapturePaymentReason,
+                ProductDetailPaymentMethodSystemNames = settings.ProductDetailPaymentMethodSystemNames.SplitSafe(",").ToArray(),
+                DisplayPaymentMethodIcons = settings.DisplayPaymentMethodIcons
             };
+
+            var providers = _providerManager.GetAllProviders<IPaymentMethod>();
+
+            var selectListItems = providers
+                .Where(x => x.IsPaymentProviderEnabled(settings))
+                .Select(x => new SelectListItem { Text = _moduleManager.Value.GetLocalizedFriendlyName(x.Metadata), Value = x.Metadata.SystemName })
+                .ToList();
+
+            ViewBag.ActivePaymentMethods = new MultiSelectList(selectListItems, "Value", "Text", model.ProductDetailPaymentMethodSystemNames);
 
             return View(model);
         }
 
         [Permission(Permissions.Configuration.Setting.Update)]
         [HttpPost, SaveSetting]
-        public IActionResult Payment(PaymentSettings settings, PaymentSettingsModel model)
+        public async Task<IActionResult> Payment(PaymentSettings settings, PaymentSettingsModel model)
         {
             if (!ModelState.IsValid)
             {
@@ -994,6 +1016,10 @@ namespace Smartstore.Admin.Controllers
             ModelState.Clear();
 
             settings.CapturePaymentReason = model.CapturePaymentReason;
+            settings.DisplayPaymentMethodIcons = model.DisplayPaymentMethodIcons;
+            settings.ProductDetailPaymentMethodSystemNames = model.ProductDetailPaymentMethodSystemNames.Convert<string>();
+
+            await _cache.RemoveByPatternAsync(PaymentService.ProductDetailPaymentIconsPatternKey);
 
             return NotifyAndRedirect("Payment");
         }
@@ -1384,10 +1410,20 @@ namespace Smartstore.Admin.Controllers
             return RedirectToAction(actionMethod);
         }
 
-        private Task PrepareGeneralCommonConfigurationModelAsync()
+        private async Task PrepareGeneralCommonConfigurationModelAsync(EmailAccountSettings emailAccountSettings)
         {
             ViewBag.AvailableTimeZones = _dateTimeHelper.GetSystemTimeZones()
                 .ToSelectListItems(_dateTimeHelper.DefaultStoreTimeZone.Id);
+
+            var emailAccounts = await _db.EmailAccounts
+                .AsNoTracking()
+                .AsNoCaching()
+                .OrderBy(x => x.Id)
+                .ToListAsync();
+
+            ViewBag.EmailAccounts = emailAccounts
+                .Select(x => new SelectListItem { Text = x.FriendlyName, Value = x.Id.ToString(), Selected = x.Id == emailAccountSettings.DefaultEmailAccountId })
+                .ToList();
 
             #region CompanyInfo custom mapping
 
@@ -1413,17 +1449,15 @@ namespace Smartstore.Admin.Controllers
 
             ViewBag.AvailableMetaContentValues = new List<SelectListItem>
             {
-                new SelectListItem { Text = "index", Value = "index" },
-                new SelectListItem { Text = "noindex", Value = "noindex" },
-                new SelectListItem { Text = "index, follow", Value = "index, follow" },
-                new SelectListItem { Text = "index, nofollow", Value = "index, nofollow" },
-                new SelectListItem { Text = "noindex, follow", Value = "noindex, follow" },
-                new SelectListItem { Text = "noindex, nofollow", Value = "noindex, nofollow" }
+                new() { Text = "index", Value = "index" },
+                new() { Text = "noindex", Value = "noindex" },
+                new() { Text = "index, follow", Value = "index, follow" },
+                new() { Text = "index, nofollow", Value = "index, nofollow" },
+                new() { Text = "noindex, follow", Value = "noindex, follow" },
+                new() { Text = "noindex, nofollow", Value = "noindex, nofollow" }
             };
 
             #endregion
-
-            return Task.CompletedTask;
         }
 
         private async Task PrepareCatalogConfigurationModelAsync(CatalogSettingsModel model)

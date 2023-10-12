@@ -1,5 +1,4 @@
 ﻿using System.Dynamic;
-using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Smartstore.ComponentModel;
@@ -138,8 +137,8 @@ namespace Smartstore.Web.Models.Cart
 
         public override async Task MapAsync(ShoppingCart from, ShoppingCartModel to, dynamic parameters = null)
         {
-            Guard.NotNull(from, nameof(from));
-            Guard.NotNull(to, nameof(to));
+            Guard.NotNull(from);
+            Guard.NotNull(to);
 
             if (!from.Items.Any())
             {
@@ -331,20 +330,13 @@ namespace Smartstore.Web.Models.Cart
 
                     case AttributeControlType.Datepicker:
                     {
-                        // Keep in mind my that the code below works only in the current culture.
                         var enteredDate = selectedCheckoutAttributes.AttributesMap
                             .Where(x => x.Key == attribute.Id)
                             .SelectMany(x => x.Value)
                             .FirstOrDefault()?
                             .ToString();
 
-                        if (enteredDate.HasValue()
-                            && DateTime.TryParseExact(enteredDate, "D", CultureInfo.CurrentCulture, DateTimeStyles.None, out var selectedDate))
-                        {
-                            caModel.SelectedDay = selectedDate.Day;
-                            caModel.SelectedMonth = selectedDate.Month;
-                            caModel.SelectedYear = selectedDate.Year;
-                        }
+                        caModel.SelectedDate = enteredDate?.ToDateTime(null);
                     }
                     break;
 
@@ -493,7 +485,7 @@ namespace Smartstore.Web.Models.Cart
                 }
 
                 var selectedPaymentMethodSystemName = customer.GenericAttributes.SelectedPaymentMethod;
-                var paymentMethod = await _paymentService.LoadPaymentMethodBySystemNameAsync(selectedPaymentMethodSystemName);
+                var paymentMethod = await _paymentService.LoadPaymentProviderBySystemNameAsync(selectedPaymentMethodSystemName);
 
                 to.OrderReviewData.PaymentMethod = paymentMethod != null ? _moduleManager.GetLocalizedFriendlyName(paymentMethod.Metadata) : string.Empty;
                 to.OrderReviewData.PaymentSummary = checkoutState.PaymentSummary;
@@ -502,7 +494,7 @@ namespace Smartstore.Web.Models.Cart
 
             #endregion
 
-            var boundPaymentMethods = await _paymentService.LoadActivePaymentMethodsAsync(
+            var boundPaymentMethods = await _paymentService.LoadActivePaymentProvidersAsync(
                 from,
                 store.Id,
                 new[] { PaymentMethodType.Button, PaymentMethodType.StandardAndButton },

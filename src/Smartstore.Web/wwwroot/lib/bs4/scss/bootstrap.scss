@@ -1,13 +1,19 @@
 /*!
- * Bootstrap v4.1.3 (https://getbootstrap.com/)
- * Copyright 2011-2018 The Bootstrap Authors
- * Copyright 2011-2018 Twitter, Inc.
- * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
+ * Bootstrap (https://getbootstrap.com/)
+ * Copyright 2011-2022 The Bootstrap Authors
+ * Copyright 2011-2022 Twitter, Inc.
+ * Licensed under MIT (https://github.com/twbs/bootstrap/blob/main/LICENSE)
+ * Customized by Smartstore, combining version 4.6 and 5.x 
  */
 
-@import "functions"; 
+// Configuration
+@import "functions";
 @import "variables";
+@import "maps";
 @import "mixins";
+@import "utilities";
+
+// Layout & components
 @import "root";
 @import "reboot";
 @import "type";
@@ -16,7 +22,8 @@
 @import "grid";
 @import "tables";
 @import "forms";
-@import "buttons"; 
+@import "floating-labels";
+@import "buttons";
 @import "transitions";
 @import "dropdown";
 @import "button-group";
@@ -34,9 +41,17 @@
 @import "media";
 @import "list-group";
 @import "close";
+//@import "toasts";
 @import "modal";
 @import "tooltip";
 @import "popover";
 @import "carousel";
-@import "utilities";
+@import "spinners";
+@import "placeholders";
 @import "print";
+
+// Helpers
+@import "helpers";
+
+// Utilities
+@import "utilities/api";

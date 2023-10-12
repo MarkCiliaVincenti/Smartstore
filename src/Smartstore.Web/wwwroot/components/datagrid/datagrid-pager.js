@@ -1,9 +1,9 @@
 ﻿Vue.component("sm-datagrid-pager", {
     template: `
-        <div class="dg-pager d-flex flex-nowrap align-items-center">
+        <div class="dg-pager btn-toolbar hstack">
             <div class="dg-page-refresh-wrapper">
-                <a href="#" class="dg-page dg-page-refresh btn btn-light btn-sm" @click.prevent="refresh">
-                    <i class="fa fa-sync-alt" :class="{ 'fa-spin text-success': $parent.isBusy }"></i>
+                <a href="#" class="dg-page dg-page-refresh btn btn-light btn-icon btn-sm" @click.prevent="refresh">
+                    <i class="fa fa-rotate" :class="{ 'fa-spin text-success': $parent.isBusy }"></i>
                 </a>
             </div>
             
@@ -11,7 +11,7 @@
                 <a href="#" class="dg-page dg-page-arrow btn btn-light btn-sm" @click.prevent="pageTo(1)" :class="{ disabled: !hasPrevPage }"><i class="fa fa-angle-double-left"></i></a>
                 <a href="#" class="dg-page dg-page-arrow btn btn-light btn-sm" @click.prevent="pageTo(currentPageIndex - 1)" :class="{ disabled: !hasPrevPage }"><i class="fa fa-angle-left"></i></a>
             
-                <a v-for="item in pageItems" href="#" @click.prevent="pageTo(item.page)" class="dg-page dg-page-number btn btn-light py-1 btn-sm d-none d-md-inline" :class="{ active: item.active }">
+                <a v-for="item in pageItems" href="#" @click.prevent="pageTo(item.page)" class="dg-page dg-page-number btn btn-light py-1 btn-sm d-none d-lg-inline" :class="{ active: item.active }">
                     {{ item.label || item.page }}
                 </a>
             
@@ -21,14 +21,14 @@
 
             <div class="ml-auto d-flex">
                 <div class="d-flex align-items-center">
-                    <span v-if="paging.enabled && paging.showInfo" class="dg-page text-muted text-truncate d-none d-md-inline pl-2">
-                        <span class="d-none d-lg-inline">{{ T.displayingItems.format(firstItemIndex.toLocaleString(), lastItemIndex.toLocaleString(), total.toLocaleString()) }}</span>
-                        <span class="d-inline d-lg-none">{{ T.displayingItemsShort.format(firstItemIndex.toLocaleString(), lastItemIndex.toLocaleString(), total.toLocaleString()) }}</span>
+                    <span v-if="paging.enabled && paging.showInfo" class="dg-page text-muted text-truncate d-none d-md-inline px-2">
+                        <span class="d-none d-xl-inline">{{ T.displayingItems.format(firstItemIndex.toLocaleString(), lastItemIndex.toLocaleString(), total.toLocaleString()) }}</span>
+                        <span class="d-inline d-xl-none">{{ T.displayingItemsShort.format(firstItemIndex.toLocaleString(), lastItemIndex.toLocaleString(), total.toLocaleString()) }}</span>
                     </span>
                     <div v-if="paging.enabled && paging.showSizeChooser && paging.availableSizes?.length" class="dropdown d-flex align-items-center border-left pl-1 ml-2">
                         <a href="#" v-html="T.xPerPage.format(command.pageSize)" class="dg-page dg-page-size-chooser btn btn-light btn-sm dropdown-toggle text-truncate px-2" data-toggle="dropdown">
                         </a>
-                        <div class="dropdown-menu">
+                        <div class="dropdown-menu" style="min-width: 6rem">
                             <a v-for="size in paging.availableSizes" href="#" class="dropdown-item" @click.prevent="setPageSize(size)">{{ size }}</a>
                         </div>
                     </div>

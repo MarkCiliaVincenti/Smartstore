@@ -12,25 +12,10 @@ namespace Smartstore.Core.Web
 {
     public partial class DefaultWebHelper : IWebHelper
     {
-        private readonly static string[] _ipHeaderNames = new string[]
-        {
-            "HTTP_X_FORWARDED_FOR",
-            "HTTP_X_FORWARDED",
-            "X-FORWARDED-FOR",
-            "HTTP_CF_CONNECTING_IP",
-            "CF_CONNECTING_IP",
-            "HTTP_CLIENT_IP",
-            "HTTP_X_CLUSTER_CLIENT_IP",
-            "HTTP_FORWARDED_FOR",
-            "HTTP_FORWARDED",
-            "REMOTE_ADDR"
-        };
-
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly Work<IStoreContext> _storeContext;
 
-        private bool? _isCurrentConnectionSecured;
         private IPAddress _ipAddress;
         private bool _urlReferrerResolved;
         private Uri _urlReferrer;
@@ -62,53 +47,22 @@ namespace Smartstore.Core.Web
             var request = HttpContext?.Request;
             if (request == null)
             {
-                return (_ipAddress = IPAddress.None);
+                return _ipAddress = IPAddress.None;
             }
 
-            IPAddress result = null;
-
-            var headers = request.Headers;
-            if (headers != null)
+            if (HttpContext.Connection?.RemoteIpAddress is IPAddress ip)
             {
-                var keysToCheck = _ipHeaderNames;
-
-                foreach (var key in keysToCheck)
+                if (ip != null && ip.AddressFamily == AddressFamily.InterNetworkV6)
                 {
-                    if (result != null)
-                    {
-                        break;
-                    }
-
-                    if (headers.TryGetValue(key, out var ipString))
-                    {
-                        // Iterate list from end to start (IPv6 addresses usually have precedence)
-                        for (int i = ipString.Count - 1; i >= 0; i--)
-                        {
-                            ipString = ipString[i].Trim();
-
-                            if (TryParseIPAddress(ipString, out var address))
-                            {
-                                result = address;
-                                break;
-                            }
-                        }
-                    }
+                    ip = (ip == IPAddress.IPv6Loopback)
+                        ? IPAddress.Loopback
+                        : ip.MapToIPv4();
                 }
+
+                _ipAddress = ip;
             }
 
-            if (result == null && HttpContext.Connection.RemoteIpAddress != null)
-            {
-                result = HttpContext.Connection.RemoteIpAddress;
-            }
-
-            if (result != null && result.AddressFamily == AddressFamily.InterNetworkV6)
-            {
-                result = result == IPAddress.IPv6Loopback
-                    ? IPAddress.Loopback
-                    : result.MapToIPv4();
-            }
-
-            return (_ipAddress = (result ?? IPAddress.None));
+            return _ipAddress ??= IPAddress.None;
         }
 
         public async Task<IPAddress> GetPublicIPAddressAsync()
@@ -126,14 +80,8 @@ namespace Smartstore.Core.Web
 
             try
             {
-                try
-                {
-                    string response = await client.GetStringAsync("http://checkip.amazonaws.com/");
-                    ipString = response.Trim();
-                }
-                catch
-                {
-                }
+                string response = await client.GetStringAsync("http://checkip.amazonaws.com/");
+                ipString = response.Trim();
             }
             catch
             {
@@ -240,7 +188,7 @@ namespace Smartstore.Core.Web
 
             if (ipAddress != IPAddress.None && userAgent.HasValue())
             {
-                return (ipAddress.ToString() + userAgent).GetHashCode().ToString();
+                return (ipAddress.ToString() + userAgent).XxHash();
             }
 
             return null;
@@ -248,39 +196,44 @@ namespace Smartstore.Core.Web
 
         public virtual bool IsCurrentConnectionSecured()
         {
-            return _isCurrentConnectionSecured ??= HttpContext?.Request?.IsSecureConnection() == true;
+            return HttpContext?.Request?.IsHttps == true;
         }
 
-        public virtual string GetStoreLocation(bool? secured = null)
+        public virtual string GetStoreLocation()
         {
-            secured ??= IsCurrentConnectionSecured();
-
             string location;
 
-            if (TryGetHostFromHttpContext(secured.Value, out var host))
+            if (TryGetHostFromHttpContext(out var host))
             {
-                location = host + HttpContext.Request.PathBase;
+                location = host.EnsureEndsWith('/');
             }
             else
             {
                 var currentStore = _storeContext.Value.CurrentStore;
-                location = currentStore.GetHost(secured.Value);
+                location = currentStore.GetBaseUrl();
             }
 
-            return location.EnsureEndsWith('/');
+            return location;
         }
 
-        protected virtual bool TryGetHostFromHttpContext(bool secured, out string host)
+        protected virtual bool TryGetHostFromHttpContext(out string host)
         {
             host = null;
 
-            var hostHeader = HttpContext?.Request?.Headers?[HeaderNames.Host] ?? StringValues.Empty;
-
-            if (!StringValues.IsNullOrEmpty(hostHeader))
+            var request = HttpContext?.Request;
+            if (request == null)
             {
-                host = (secured ? Uri.UriSchemeHttps : Uri.UriSchemeHttp)
+                return false;
+            }
+
+            var hostString = request.Host;
+
+            if (hostString.HasValue)
+            {
+                host = request.Scheme
                     + Uri.SchemeDelimiter
-                    + hostHeader[0];
+                    + hostString
+                    + request.PathBase;
 
                 return true;
             }
@@ -288,7 +241,7 @@ namespace Smartstore.Core.Web
             return false;
         }
 
-        public virtual string GetCurrentPageUrl(bool withQueryString = false, bool? secured = null, bool lowercaseUrl = false)
+        public virtual string GetCurrentPageUrl(bool withQueryString = false, bool lowercaseUrl = false)
         {
             var httpRequest = HttpContext?.Request;
             if (httpRequest == null)
@@ -296,7 +249,7 @@ namespace Smartstore.Core.Web
                 return string.Empty;
             }
 
-            var storeLocation = GetStoreLocation(secured ?? IsCurrentConnectionSecured());
+            var storeLocation = GetStoreLocation();
 
             var url = storeLocation.TrimEnd('/') + httpRequest.Path;
 
@@ -325,7 +278,9 @@ namespace Smartstore.Core.Web
 
         public virtual T QueryString<T>(string name)
         {
-            var queryParam = HttpContext?.Request?.Query["name"] ?? StringValues.Empty;
+            Guard.NotEmpty(name, nameof(name));
+            
+            var queryParam = HttpContext?.Request?.Query[name] ?? StringValues.Empty;
 
             if (!StringValues.IsNullOrEmpty(queryParam))
             {
@@ -335,16 +290,20 @@ namespace Smartstore.Core.Web
             return default;
         }
 
-        public string ModifyQueryString(string url, string queryStringModification, string anchor = null)
+        public string ModifyQueryString2(string url, string queryModification, string removeParamName = null, string anchor = null)
         {
             if (string.IsNullOrEmpty(url))
+            {
                 return string.Empty;
+            }   
 
-            if (string.IsNullOrEmpty(queryStringModification) && string.IsNullOrEmpty(anchor))
+            if (string.IsNullOrEmpty(queryModification) && string.IsNullOrEmpty(anchor))
+            {
                 return url;
+            }
 
             url = url.EmptyNull();
-            queryStringModification = queryStringModification.EmptyNull();
+            queryModification = queryModification.EmptyNull();
 
             string curAnchor = null;
 
@@ -357,7 +316,7 @@ namespace Smartstore.Core.Web
 
             var parts = url.Split(new[] { '?' });
             var current = new MutableQueryCollection(parts.Length == 2 ? parts[1] : string.Empty);
-            var modify = new MutableQueryCollection(queryStringModification.EnsureStartsWith('?'));
+            var modify = new MutableQueryCollection(queryModification.EnsureStartsWith('?'));
 
             foreach (var nv in modify.Keys)
             {
@@ -367,19 +326,91 @@ namespace Smartstore.Core.Web
             var result = string.Concat(
                 parts[0],
                 current.ToString(),
-                anchor.NullEmpty() == null ? (curAnchor == null ? "" : "#" + curAnchor) : "#" + anchor
+                anchor.NullEmpty() == null ? (curAnchor == null ? string.Empty : "#" + curAnchor) : "#" + anchor
             );
 
             return result;
         }
 
+        public string ModifyQueryString(string url, string queryModification, string removeParamName = null, string anchor = null)
+        {
+            var request = HttpContext?.Request;
+
+            string baseUri;
+            QueryString currentQuery;
+            string currentAnchor;
+
+            if (url == null)
+            {
+                if (request == null)
+                {
+                    // Cannot resolve
+                    return string.Empty;
+                }
+
+                baseUri = request.PathBase + request.Path;
+                currentQuery = request.QueryString;
+                currentAnchor = anchor;
+            }
+            else
+            {
+                TokenizeUrl(url, out baseUri, out currentQuery, out currentAnchor);
+                currentAnchor ??= anchor;
+            }
+
+            if (queryModification != null || removeParamName != null)
+            {
+                var modified = new MutableQueryCollection(currentQuery);
+
+                if (!string.IsNullOrEmpty(removeParamName))
+                {
+                    modified.Remove(removeParamName);
+                }
+
+                currentQuery = modified.Merge(queryModification);
+            }
+
+            var result = string.Concat(
+                baseUri.AsSpan(),
+                currentQuery.ToUriComponent().AsSpan(),
+                currentAnchor.LeftPad(pad: '#').AsSpan()
+            );
+
+            return result;
+        }
+
+        private static void TokenizeUrl(string url, out string baseUri, out QueryString query, out string anchor)
+        {
+            baseUri = url;
+            query = Microsoft.AspNetCore.Http.QueryString.Empty;
+            anchor = null;
+
+            var anchorIndex = url.LastIndexOf('#');
+            if (anchorIndex >= 0)
+            {
+                baseUri = url[..anchorIndex];
+                anchor = url[anchorIndex..];
+            }
+
+            var queryIndex = baseUri.IndexOf('?');
+            if (queryIndex >= 0)
+            {
+                query = new QueryString(baseUri[queryIndex..]);
+                baseUri = baseUri[..queryIndex];
+            }
+        }
+
         public string RemoveQueryParam(string url, string queryParam)
         {
             if (string.IsNullOrEmpty(url))
+            {
                 return string.Empty;
+            }  
 
             if (string.IsNullOrEmpty(queryParam))
+            {
                 return url;
+            }  
 
             var parts = url.SplitSafe('?').ToArray();
 
@@ -397,7 +428,7 @@ namespace Smartstore.Core.Web
 
         public virtual string GetHttpHeader(string name)
         {
-            Guard.NotEmpty(name, nameof(name));
+            Guard.NotEmpty(name);
 
             var values = StringValues.Empty;
             if (HttpContext?.Request?.Headers?.TryGetValue(name, out values) == true)

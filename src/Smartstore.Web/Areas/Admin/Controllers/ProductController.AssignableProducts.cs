@@ -21,7 +21,7 @@ namespace Smartstore.Admin.Controllers
         {
             var relatedProducts = await _db.RelatedProducts
                 .AsNoTracking()
-                .ApplyProductId1Filter(productId)
+                .ApplyProductId1Filter(productId, true)
                 .ApplyGridCommand(command)
                 .ToPagedList(command)
                 .LoadAsync();
@@ -47,7 +47,7 @@ namespace Smartstore.Admin.Controllers
                         DisplayOrder = x.DisplayOrder,
                         Product2Sku = product2.Sku,
                         Product2Published = product2.Published,
-                        EditUrl = Url.Action("Edit", "Product", new { id = x.ProductId2 })
+                        EditUrl = Url.Action(nameof(ProductController.Edit), "Product", new { id = x.ProductId2 })
                     };
                 })
                 .ToList();
@@ -105,16 +105,16 @@ namespace Smartstore.Admin.Controllers
             var products = await _db.Products
                 .AsNoTracking()
                 .Where(x => selectedProductIds.Contains(x.Id))
-                .ApplyStandardFilter()
+                .ApplyStandardFilter(true)
                 .ToListAsync();
 
             var existingRelations = await _db.RelatedProducts
-                .ApplyProductId1Filter(productId)
+                .ApplyProductId1Filter(productId, true)
                 .ToListAsync();
 
             foreach (var product in products)
             {
-                if (FindRelatedProduct(existingRelations, productId, product.Id) == null)
+                if (!existingRelations.Any(x => x.ProductId1 == productId && x.ProductId2 == product.Id))
                 {
                     if (maxDisplayOrder == -1 && (relation = existingRelations.OrderByDescending(x => x.DisplayOrder).FirstOrDefault()) != null)
                     {
@@ -154,18 +154,6 @@ namespace Smartstore.Admin.Controllers
             return new JsonResult(new { Message = message });
         }
 
-        /// <summary>
-        /// Finds a related product item by specified identifiers
-        /// </summary>
-        /// <param name="source">Source</param>
-        /// <param name="productId1">The first product identifier</param>
-        /// <param name="productId2">The second product identifier</param>
-        /// <returns>Related product</returns>
-        private static RelatedProduct FindRelatedProduct(List<RelatedProduct> source, int productId1, int productId2)
-        {
-            return source.Where(x => x.ProductId1 == productId1 && x.ProductId2 == productId2).FirstOrDefault();
-        }
-
         #endregion
 
         #region Cross-sell products
@@ -182,7 +170,7 @@ namespace Smartstore.Admin.Controllers
                 .ToPagedList(command)
                 .LoadAsync();
 
-            var productIds2 = crossSellProducts.Select(x => x.ProductId2).Distinct().ToArray();
+            var productIds2 = crossSellProducts.ToDistinctArray(x => x.ProductId2);
             var products2 = await _db.Products
                 .AsNoTracking()
                 .Where(x => productIds2.Contains(x.Id))
@@ -202,7 +190,7 @@ namespace Smartstore.Admin.Controllers
                         ProductTypeLabelHint = product2.ProductTypeLabelHint,
                         Product2Sku = product2.Sku,
                         Product2Published = product2.Published,
-                        EditUrl = Url.Action("Edit", "Product", new { id = x.ProductId2 })
+                        EditUrl = Url.Action(nameof(ProductController.Edit), "Product", new { id = x.ProductId2 })
                     };
                 })
                 .ToList();
@@ -239,12 +227,12 @@ namespace Smartstore.Admin.Controllers
                 .ToListAsync();
 
             var existingRelations = await _db.CrossSellProducts
-                .ApplyProductId1Filter(productId)
+                .ApplyProductId1Filter(productId, true)
                 .ToListAsync();
 
             foreach (var product in products.OrderBySequence(selectedProductIds))
             {
-                if (FindCrossSellProduct(existingRelations, productId, product.Id) == null)
+                if (!existingRelations.Any(x => x.ProductId1 == productId && x.ProductId2 == product.Id))
                 {
                     var crossSellProduct = new CrossSellProduct
                     {
@@ -275,18 +263,6 @@ namespace Smartstore.Admin.Controllers
             }
 
             return new JsonResult(new { Message = message });
-        }
-
-        /// <summary>
-        /// Finds a cross-sell product item by specified identifiers
-        /// </summary>
-        /// <param name="source">Source</param>
-        /// <param name="productId1">The first product identifier</param>
-        /// <param name="productId2">The second product identifier</param>
-        /// <returns>Cross-sell product</returns>
-        public static CrossSellProduct FindCrossSellProduct(List<CrossSellProduct> source, int productId1, int productId2)
-        {
-            return source.Where(x => x.ProductId1 == productId1 && x.ProductId2 == productId2).FirstOrDefault();
         }
 
         #endregion
@@ -354,15 +330,11 @@ namespace Smartstore.Admin.Controllers
 
             if (ids.Any())
             {
-                var products = await _db.Products.GetManyAsync(ids);
-
-                foreach (var product in products)
-                {
-                    product.ParentGroupedProductId = 0;
-                    numDeleted++;
-                }
+                var products = await _db.Products.GetManyAsync(ids, true);
+                products.Each(x => x.ParentGroupedProductId = 0);
 
                 await _db.SaveChangesAsync();
+                numDeleted = products.Count;
             }
 
             return Json(new { Success = true, Count = numDeleted });
@@ -381,7 +353,7 @@ namespace Smartstore.Admin.Controllers
 
             var products = await _db.Products
                 .AsQueryable()
-                .Where(x => selectedProductIds.Contains(x.Id))
+                .Where(x => selectedProductIds.Contains(x.Id) && x.Id != productId && x.ProductTypeId != (int)ProductType.GroupedProduct)
                 .ToListAsync();
 
             foreach (var product in products)
@@ -424,6 +396,7 @@ namespace Smartstore.Admin.Controllers
                     ProductName = x.Product.Name,
                     ProductTypeName = x.Product.GetProductTypeLabel(Services.Localization),
                     ProductTypeLabelHint = x.Product.ProductTypeLabelHint,
+                    ProductEditUrl = Url.Action(nameof(ProductController.Edit), "Product", new { id = x.Product.Id, area = "Admin" }),
                     Sku = x.Product.Sku,
                     Quantity = x.Quantity,
                     Discount = x.Discount,
@@ -510,6 +483,7 @@ namespace Smartstore.Admin.Controllers
             var bundleItem = await _db.ProductBundleItem
                 .Include(x => x.BundleProduct)
                 .Include(x => x.Product)
+                .Include(x => x.AttributeFilters)
                 .FindByIdAsync(id, false);
 
             if (bundleItem == null)
@@ -534,6 +508,7 @@ namespace Smartstore.Admin.Controllers
                 var bundleItem = await _db.ProductBundleItem
                     .Include(x => x.BundleProduct)
                     .Include(x => x.Product)
+                    .Include(x => x.AttributeFilters)
                     .FindByIdAsync(model.Id);
 
                 if (bundleItem == null)

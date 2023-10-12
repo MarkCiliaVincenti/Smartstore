@@ -322,10 +322,16 @@
                     if (!el)
                         continue;
 
-                    if (el.classList.contains('form-check-input'))
+                    if (el.classList.contains('form-check-input')) {
                         el.checked = val;
-                    else
+                    }
+                    else {
+                        if (val === '' && el.matches('.remember-disallow-empty')) {
+                            continue;
+                        }
+
                         el.value = val;
+                    }   
 
                     el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
                 }
@@ -454,6 +460,36 @@
             var msg = $(this).data("confirm-message") || window.Res["Admin.Common.AskToProceed"];
             return confirm(msg);
         });
+
+        // Prevent (button) multiclick
+        $(document).on('click', '.btn-prevent-multiclick', function (e) {
+            let el = $(this);
+            let containingForm = el.closest("form");
+
+            if (containingForm.length) {
+                el.prop('disabled', true);
+                containingForm.submit();
+
+                if (!containingForm.valid()) {
+                    el.prop('disabled', false);
+                }
+            }
+
+            return true;
+        });
+
+        // Report validity for native form controls.
+        let formWithNativeValidation = $("form.native-validation");
+        if (formWithNativeValidation.length) {
+            // TODO/INFO: (mh) This will not run in AJAX scenarios when forms are injected after page load.
+            formWithNativeValidation.on("submit", function () {
+                if (!formWithNativeValidation[0].checkValidity()) {
+                    formWithNativeValidation[0].reportValidity();
+                    return false;
+                }
+                return true;
+            });
+        }
 
         // Switch toggle
         $(document).on('click', 'label.switch', function (e) {
@@ -611,16 +647,15 @@
             });
         })();
 
-
-        // html text collapser
+        // HTML text collapser
         if ($.fn.moreLess) {
             $('.more-less').moreLess();
         }
 
         // Unselectable radio button groups
         $(document).on('click', '.btn-group-toggle.unselectable > .btn', function (e) {
-            var btn = $(this);
-            var radio = btn.find('input:radio');
+            let btn = $(this);
+            let radio = btn.find('input:radio');
 
             if (radio.length && radio.prop('checked')) {
                 _.delay(function () {
@@ -633,11 +668,17 @@
             }
         });
 
-        // state region dropdown
+        // State region dropdown
         $(document).on('change', '.country-selector', function () {
             var el = $(this);
             var selectedCountryId = el.val();
             var ddlStates = $(el.data("region-control-selector"));
+            var ajaxUrl = el.data("states-ajax-url");
+
+            if (!ajaxUrl || !ddlStates) {
+                // // No data to load.
+                return;
+            }
 
             if (selectedCountryId == '0') {
                 // No data to load.
@@ -645,7 +686,6 @@
                 return;
             }
 
-            var ajaxUrl = el.data("states-ajax-url");
             var addEmptyStateIfRequired = el.data("addemptystateifrequired");
             var addAsterisk = el.data("addasterisk");
             var selectedId = ddlStates.data('select-selected-id');

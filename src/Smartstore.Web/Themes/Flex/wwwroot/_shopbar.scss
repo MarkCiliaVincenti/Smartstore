@@ -1,4 +1,4 @@
-/// <reference path="theme.scss" />
+/// <reference path="references.scss" />
 
 //
 // ShopBar layout
@@ -28,10 +28,10 @@
 }
 
 .shop-logo {
-    margin-left: 0;
+    margin-inline-start: 0;
     transform: translateX(0);
     opacity: 1;
-    transition-property: opacity, transform, margin-left;
+    transition-property: opacity, transform, margin-inline-start;
     transition-duration: 0.25s;
     transition-timing-function: ease-in-out;
 
@@ -48,11 +48,19 @@
         text-align: center;
 
         @media (min-width: 480px) {
-            & { max-width: 200px; max-height: 80px; width: auto; }
+            & {
+                max-width: 200px;
+                max-height: 80px;
+                width: auto;
+            }
         }
 
         @include media-breakpoint-up(lg) {
-            & { max-width: 250px; max-height: 100px; width: auto; }
+            & {
+                max-width: 250px;
+                max-height: 100px;
+                width: auto;
+            }
         }
     }
 }
@@ -140,7 +148,7 @@
     text-decoration: none !important;
     padding: 0.35rem 0.5rem;
     border: 1px solid transparent;
-    border-radius: 0.125rem;
+    border-radius: var(--border-radius-md);
     transition: all 0.12s ease;
     cursor: pointer;
 
@@ -164,7 +172,6 @@
     }
 }
 
-
 .shopbar-light {
     .shopbar-button { 
         color: $shopbar-color !important; 
@@ -186,8 +193,8 @@
 }
 
 .shopbar-inverse {
-    .shopbar-button { 
-        color: $shopbar-inverse-color !important; 
+    .shopbar-button {
+        color: $shopbar-inverse-color !important;
 
         &:hover {
             border-color: rgba(#fff, 0.2) rgba(#fff, 0.2) rgba(#fff, 0.2);
@@ -199,12 +206,12 @@
             box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.3);
         }
 
-        .shopbar-button-label span { color: $shopbar-inverse-color-muted;  }
+        .shopbar-button-label span,
+        .shopbar-button-label-sm {
+            color: $shopbar-inverse-color-muted;
+        }
     }
 }
-
-
-
 
 
 //
@@ -219,25 +226,29 @@
 .menubar {
     display: flex;
     flex-direction: row;
-    padding: 0;
+    padding: 0.4rem 0;
 
     .dropdown-menu {
-        min-width: 200px;
+        --dropdown-min-width: 200px;
     }
 }
 
 .menubar-group {
     display: flex;
-    margin-left: 1rem;
+    margin-inline-start: 1rem;
+    gap: 1px;
 }
 
 .menubar-link {
     position: relative;
-    display: block;
+    display: flex;
+    align-items: baseline;
+    column-gap: 0.5em;
     font-size: $font-size-xs;
-    padding: 1.25em 0.8em;
+    padding: 0.75em;
     text-decoration: none !important;
     text-transform: uppercase;
+    @include border-radius(var(--border-radius-md));
 
     > .menubar-icon {
         font-size: $font-size-base;
@@ -248,18 +259,26 @@
     font-weight: $font-weight-medium;
 }
 
-
 .menubar-light {
-    &.menubar-section { border-bottom: 1px solid $header-border-color; }
+    &.menubar-section 
+    { 
+        border-bottom: 1px solid $header-border-color; 
+    }
+
     .menubar-link {
         color: $menubar-color;
     }
-    .menubar-link:hover,
-    .menubar-link:active,
-    .show .menubar-link {
+
+    .menubar-link:hover {
         background-color: $header-hover-bg;
         color:  $menubar-color;
     }
+
+    .menubar-link:active,
+    .show .menubar-link {
+        background-color: opacify($header-hover-bg, .025);
+    }
+
     .menubar-group--special .menubar-link {
         color: darken($menubar-color, 15%) !important;
     }

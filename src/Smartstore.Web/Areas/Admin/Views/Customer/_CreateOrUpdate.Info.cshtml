@@ -46,7 +46,7 @@
             <div class="input-group">
                 <editor asp-for="Password" class="form-control" />
                 <span sm-if="Model.Id > 0" class="input-group-append">
-                    <button type="submit" name="changepassword" value="changepassword" class="btn btn-outline-secondary">
+                    <button type="submit" name="changepassword" value="changepassword" class="btn btn-light">
                         <i class="fa fa-cog"></i>
                         <span>@T("Account.ChangePassword")</span>
                     </button>
@@ -105,7 +105,7 @@
             <smart-label asp-for="Gender" />
         </div>
         <div class="adminData">
-            <div class="form-control-plaintext form-inline">
+            <div class="form-control-plaintext">
                 <div class="form-check form-check-inline">
                     <input type="radio" name="Gender" class="form-check-input" id="gender-male" value="M" attr-checked='(Model.Gender == "M", "checked")' />
                     <label class="form-check-label" for="gender-male">@T("Admin.Customers.Customers.Fields.Gender.Male")</label>

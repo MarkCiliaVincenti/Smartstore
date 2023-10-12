@@ -5,7 +5,7 @@ namespace Smartstore.Core.Checkout.Payment
     public class PaymentSettings : ISettings
     {
         /// <summary>
-        /// Gets or sets a system names of active payment methods
+        /// Gets or sets the system names of active payment methods
         /// </summary>
         public List<string> ActivePaymentMethodSystemNames { get; set; } = new();
 
@@ -20,18 +20,18 @@ namespace Smartstore.Core.Checkout.Payment
         public bool BypassPaymentMethodSelectionIfOnlyOne { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether we should bypass the payment method info page
-        /// </summary>
-        public bool BypassPaymentMethodInfo { get; set; }
-
-        /// <summary>
         /// Gets or sets the reason for automatic payment capturing
         /// </summary>
         public CapturePaymentReason? CapturePaymentReason { get; set; }
 
         /// <summary>
-        /// Gets or sets the identifier of the currency in which the wallet is kept.
+        /// Gets or sets the system names of payment methods that should be displayed on product detail pages.
         /// </summary>
-        public int WalletCurrencyId { get; set; }
+        public string ProductDetailPaymentMethodSystemNames { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether small payment icons should be used on payment selection page.
+        /// </summary>
+        public bool DisplayPaymentMethodIcons { get; set; } = true;
     }
 }

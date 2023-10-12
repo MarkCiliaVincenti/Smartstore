@@ -4,10 +4,12 @@ namespace Smartstore.Admin.Controllers
 {
     public class HomeController : AdminController
     {
+        private readonly IUserAgentFactory _userAgentFactory;
         private readonly IUserAgent _userAgent;
 
-        public HomeController(IUserAgent userAgent)
+        public HomeController(IUserAgentFactory userAgentFactory, IUserAgent userAgent)
         {
+            _userAgentFactory = userAgentFactory;
             _userAgent = userAgent;
         }
 
@@ -25,10 +27,12 @@ namespace Smartstore.Admin.Controllers
         {
             if (ua.HasValue())
             {
-                _userAgent.RawValue = ua;
+                return View(_userAgentFactory.CreateUserAgent(ua, false));
             }
-
-            return View(_userAgent);
+            else
+            {
+                return View(_userAgent);
+            }
         }
     }
 }

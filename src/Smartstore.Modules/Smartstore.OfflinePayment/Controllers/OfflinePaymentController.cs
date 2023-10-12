@@ -1,8 +1,6 @@
-﻿using Autofac;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Smartstore.ComponentModel;
-using Smartstore.Core.Content.Media;
 using Smartstore.Core.Security;
 using Smartstore.Engine.Modularity;
 using Smartstore.OfflinePayment.Models;
@@ -14,35 +12,12 @@ namespace Smartstore.OfflinePayment.Controllers
 {
     public class OfflinePaymentController : AdminController
     {
-        private readonly IComponentContext _ctx;
-        private readonly IMediaService _mediaService;
         private readonly IProviderManager _providerManager;
 
-        public OfflinePaymentController(
-            IComponentContext ctx,
-            IMediaService mediaService,
-            IProviderManager providerManager)
+        public OfflinePaymentController(IProviderManager providerManager)
         {
-            _ctx = ctx;
-            _mediaService = mediaService;
             _providerManager = providerManager;
         }
-
-        #region Global
-
-        private List<SelectListItem> GetTransactModes()
-        {
-            var list = new List<SelectListItem>
-            {
-                new SelectListItem { Text = T("Enums.PaymentStatus.Pending"), Value = ((int)TransactMode.Pending).ToString() },
-                new SelectListItem { Text = T("Enums.PaymentStatus.Authorized"), Value = ((int)TransactMode.Authorize).ToString() },
-                new SelectListItem { Text = T("Enums.PaymentStatus.Paid"), Value = ((int)TransactMode.Paid).ToString() }
-            };
-
-            return list;
-        }
-
-        #endregion
 
         #region CashOnDelivery
 
@@ -51,7 +26,8 @@ namespace Smartstore.OfflinePayment.Controllers
         {
             var model = MiniMapper.Map<CashOnDeliveryPaymentSettings, CashOnDeliveryConfigurationModel>(settings);
             model.PostActionName = nameof(CashOnDeliveryConfigure);
-            model.PaymentMethodLogo = settings.ThumbnailPictureId;
+            model.PrimaryStoreCurrencyCode = Services.CurrencyService.PrimaryCurrency.CurrencyCode;
+
             ViewBag.Provider = _providerManager.GetProvider("Payments.CashOnDelivery").Metadata;
 
             return View("GenericConfigure", model);
@@ -67,7 +43,6 @@ namespace Smartstore.OfflinePayment.Controllers
 
             ModelState.Clear();
             MiniMapper.Map(model, settings);
-            settings.ThumbnailPictureId = model.PaymentMethodLogo;
 
             return RedirectToAction(nameof(CashOnDeliveryConfigure));
         }
@@ -81,7 +56,8 @@ namespace Smartstore.OfflinePayment.Controllers
         {
             var model = MiniMapper.Map<InvoicePaymentSettings, InvoiceConfigurationModel>(settings);
             model.PostActionName = nameof(InvoiceConfigure);
-            model.PaymentMethodLogo = settings.ThumbnailPictureId;
+            model.PrimaryStoreCurrencyCode = Services.CurrencyService.PrimaryCurrency.CurrencyCode;
+
             ViewBag.Provider = _providerManager.GetProvider("Payments.Invoice").Metadata;
 
             return View("GenericConfigure", model);
@@ -97,7 +73,6 @@ namespace Smartstore.OfflinePayment.Controllers
 
             ModelState.Clear();
             MiniMapper.Map(model, settings);
-            settings.ThumbnailPictureId = model.PaymentMethodLogo;
 
             return RedirectToAction(nameof(InvoiceConfigure));
         }
@@ -111,7 +86,8 @@ namespace Smartstore.OfflinePayment.Controllers
         {
             var model = MiniMapper.Map<PayInStorePaymentSettings, PayInStoreConfigurationModel>(settings);
             model.PostActionName = nameof(PayInStoreConfigure);
-            model.PaymentMethodLogo = settings.ThumbnailPictureId;
+            model.PrimaryStoreCurrencyCode = Services.CurrencyService.PrimaryCurrency.CurrencyCode;
+
             ViewBag.Provider = _providerManager.GetProvider("Payments.PayInStore").Metadata;
 
             return View("GenericConfigure", model);
@@ -127,7 +103,6 @@ namespace Smartstore.OfflinePayment.Controllers
 
             ModelState.Clear();
             MiniMapper.Map(model, settings);
-            settings.ThumbnailPictureId = model.PaymentMethodLogo;
 
             return RedirectToAction(nameof(PayInStoreConfigure));
         }
@@ -141,7 +116,8 @@ namespace Smartstore.OfflinePayment.Controllers
         {
             var model = MiniMapper.Map<PrepaymentPaymentSettings, PrepaymentConfigurationModel>(settings);
             model.PostActionName = nameof(PrepaymentConfigure);
-            model.PaymentMethodLogo = settings.ThumbnailPictureId;
+            model.PrimaryStoreCurrencyCode = Services.CurrencyService.PrimaryCurrency.CurrencyCode;
+
             ViewBag.Provider = _providerManager.GetProvider("Payments.Prepayment").Metadata;
 
             return View("GenericConfigure", model);
@@ -157,7 +133,6 @@ namespace Smartstore.OfflinePayment.Controllers
 
             ModelState.Clear();
             MiniMapper.Map(model, settings);
-            settings.ThumbnailPictureId = model.PaymentMethodLogo;
 
             return RedirectToAction(nameof(PrepaymentConfigure));
         }
@@ -171,7 +146,8 @@ namespace Smartstore.OfflinePayment.Controllers
         {
             var model = MiniMapper.Map<DirectDebitPaymentSettings, DirectDebitConfigurationModel>(settings);
             model.PostActionName = nameof(DirectDebitConfigure);
-            model.PaymentMethodLogo = settings.ThumbnailPictureId;
+            model.PrimaryStoreCurrencyCode = Services.CurrencyService.PrimaryCurrency.CurrencyCode;
+
             ViewBag.Provider = _providerManager.GetProvider("Payments.DirectDebit").Metadata;
 
             return View("GenericConfigure", model);
@@ -187,7 +163,6 @@ namespace Smartstore.OfflinePayment.Controllers
 
             ModelState.Clear();
             MiniMapper.Map(model, settings);
-            settings.ThumbnailPictureId = model.PaymentMethodLogo;
 
             return RedirectToAction(nameof(DirectDebitConfigure));
         }
@@ -201,7 +176,8 @@ namespace Smartstore.OfflinePayment.Controllers
         {
             var model = MiniMapper.Map<PurchaseOrderNumberPaymentSettings, PurchaseOrderNumberConfigurationModel>(settings);
             model.PostActionName = nameof(PurchaseOrderNumberConfigure);
-            model.PaymentMethodLogo = settings.ThumbnailPictureId;
+            model.PrimaryStoreCurrencyCode = Services.CurrencyService.PrimaryCurrency.CurrencyCode;
+
             ViewBag.Provider = _providerManager.GetProvider("Payments.PurchaseOrderNumber").Metadata;
 
             return View("GenericConfigure", model);
@@ -217,7 +193,6 @@ namespace Smartstore.OfflinePayment.Controllers
 
             ModelState.Clear();
             MiniMapper.Map(model, settings);
-            settings.ThumbnailPictureId = model.PaymentMethodLogo;
 
             return RedirectToAction(nameof(PurchaseOrderNumberConfigure));
         }
@@ -230,19 +205,28 @@ namespace Smartstore.OfflinePayment.Controllers
         public IActionResult ManualConfigure(ManualPaymentSettings settings)
         {
             var model = MiniMapper.Map<ManualPaymentSettings, ManualConfigurationModel>(settings);
-            model.PaymentMethodLogo = settings.ThumbnailPictureId;
-            model.TransactModeValues = GetTransactModes();
+
+            model.TransactModeValues = new List<SelectListItem>
+            {
+                new() { Text = T("Enums.PaymentStatus.Pending"), Value = ((int)TransactMode.Pending).ToString() },
+                new() { Text = T("Enums.PaymentStatus.Authorized"), Value = ((int)TransactMode.Authorize).ToString() },
+                new() { Text = T("Enums.PaymentStatus.Paid"), Value = ((int)TransactMode.Paid).ToString() }
+            };
+
             model.ExcludedCreditCards = settings.ExcludedCreditCards.SplitSafe(',').ToArray();
-            model.AvailableCreditCards = ManualProvider.CreditCardTypes
+
+            model.AvailableCreditCards = ManualProvider.GetCreditCardBrands(T)
                 .Select(x => new SelectListItem
                 {
-                    Text = x.Text,
-                    Value = x.Value,
-                    Selected = model.ExcludedCreditCards.Contains(x.Value)
+                    Text = x.Value,
+                    Value = x.Key,
+                    Selected = model.ExcludedCreditCards.Contains(x.Key)
                 })
                 .ToList();
 
             model.PostActionName = nameof(ManualConfigure);
+            model.PrimaryStoreCurrencyCode = Services.CurrencyService.PrimaryCurrency.CurrencyCode;
+
             ViewBag.Provider = _providerManager.GetProvider("Payments.Manual").Metadata;
 
             return View("ManualConfigure", model);
@@ -260,7 +244,6 @@ namespace Smartstore.OfflinePayment.Controllers
             ModelState.Clear();
             MiniMapper.Map(model, settings);
             settings.ExcludedCreditCards = string.Join(',', model.ExcludedCreditCards ?? new string[0]);
-            settings.ThumbnailPictureId = model.PaymentMethodLogo;
 
             return RedirectToAction(nameof(ManualConfigure));
         }

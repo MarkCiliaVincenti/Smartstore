@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Smartstore.Admin.Models.Export;
 using Smartstore.Admin.Models.Scheduling;
+using Smartstore.Collections;
 using Smartstore.ComponentModel;
 using Smartstore.Core.Catalog.Brands;
 using Smartstore.Core.Catalog.Categories;
@@ -44,6 +45,7 @@ namespace Smartstore.Admin.Controllers
         private readonly IExportProfileService _exportProfileService;
         private readonly ICategoryService _categoryService;
         private readonly ICurrencyService _currencyService;
+        private readonly ILanguageService _languageService;
         private readonly IDataExporter _dataExporter;
         private readonly ITaskScheduler _taskScheduler;
         private readonly IProviderManager _providerManager;
@@ -57,6 +59,7 @@ namespace Smartstore.Admin.Controllers
             IExportProfileService exportProfileService,
             ICategoryService categoryService,
             ICurrencyService currencyService,
+            ILanguageService languageService,
             IDataExporter dataExporter,
             ITaskScheduler taskScheduler,
             IProviderManager providerManager,
@@ -69,6 +72,7 @@ namespace Smartstore.Admin.Controllers
             _exportProfileService = exportProfileService;
             _categoryService = categoryService;
             _currencyService = currencyService;
+            _languageService = languageService;
             _dataExporter = dataExporter;
             _taskScheduler = taskScheduler;
             _providerManager = providerManager;
@@ -293,9 +297,9 @@ namespace Smartstore.Admin.Controllers
             try
             {
                 var configInfo = provider.Value.ConfigurationInfo;
-                if (configInfo != null && model.CustomProperties.ContainsKey("ProviderConfigData"))
+                if (configInfo != null && model.CustomProperties.TryGetValue("ProviderConfigData", out object configData))
                 {
-                    profile.ProviderConfigData = XmlHelper.Serialize(model.CustomProperties["ProviderConfigData"], configInfo.ModelType);
+                    profile.ProviderConfigData = XmlHelper.Serialize(configData, configInfo.ModelType);
                 }
             }
             catch (Exception ex)
@@ -602,7 +606,8 @@ namespace Smartstore.Admin.Controllers
                         Name = x.Name,
                         Published = x.Published,
                         DisplayOrder = x.DisplayOrder,
-                        LimitedToStores = x.LimitedToStores
+                        LimitedToStores = x.LimitedToStores,
+                        SubjectToAcl = x.SubjectToAcl,
                     })
                     .ToList();
 
@@ -868,11 +873,7 @@ namespace Smartstore.Admin.Controllers
             var store = Services.StoreContext.CurrentStore;
             var stores = Services.StoreContext.GetAllStores();
             var emailAccounts = await _db.EmailAccounts.AsNoTracking().ToListAsync();
-
-            var languages = await _db.Languages
-                .AsNoTracking()
-                .OrderBy(x => x.DisplayOrder)
-                .ToListAsync();
+            var languages = await _languageService.GetAllLanguagesAsync(true);
 
             var currencies = await _db.Currencies
                 .AsNoTracking()
@@ -897,13 +898,10 @@ namespace Smartstore.Admin.Controllers
             ViewBag.CompletedEmailAddresses = new MultiSelectList(profile.CompletedEmailAddresses.SplitSafe(','));
 
             ViewBag.Stores = stores.ToSelectListItems();
-
-            ViewBag.Languages = languages
-                .Select(y => new SelectListItem { Text = y.Name, Value = y.Id.ToString() })
-                .ToList();
+            ViewBag.Languages = languages.ToSelectListItems();
 
             ViewBag.Currencies = currencies
-                .Select(y => new SelectListItem { Text = y.Name, Value = y.Id.ToString() })
+                .Select(y => new SelectListItem { Text = y.GetLocalized(x => x.Name), Value = y.Id.ToString() })
                 .ToList();
 
             ViewBag.DeploymentTypeIconClasses = DeploymentTypeIconClasses;
@@ -976,24 +974,12 @@ namespace Smartstore.Admin.Controllers
                     ViewBag.AppendDescriptionTexts = new MultiSelectList(projection.AppendDescriptionText.SplitSafe(','));
                     ViewBag.CriticalCharacters = new MultiSelectList(projection.CriticalCharacters.SplitSafe(','));
 
-                    if (model.Filter.CategoryIds?.Any() ?? false)
-                    {
-                        var tree = await _categoryService.GetCategoryTreeAsync(0, true);
+                    var categoryTree = !model.Filter.CategoryIds.IsNullOrEmpty() || model.Filter.CategoryId.GetValueOrDefault() != 0
+                        ? await _categoryService.GetCategoryTreeAsync(0, true)
+                        : null;
 
-                        ViewBag.SelectedCategories = model.Filter.CategoryIds
-                            .Where(x => x != 0)
-                            .Select(x =>
-                            {
-                                var node = tree.SelectNodeById(x);
-                                var item = new SelectListItem { Selected = true, Value = x.ToString(), Text = node == null ? x.ToString() : _categoryService.GetCategoryPath(node) };
-                                return item;
-                            })
-                            .ToList();
-                    }
-                    else
-                    {
-                        ViewBag.SelectedCategories = new List<SelectListItem>();
-                    }
+                    ViewBag.SelectedCategoryId = CreateSelectedCategoriesList(new[] { model.Filter.CategoryId ?? 0 }, categoryTree);
+                    ViewBag.SelectedCategoryIds = CreateSelectedCategoriesList(model.Filter.CategoryIds, categoryTree);
                 }
                 else if (model.Provider.EntityType == ExportEntityType.Customer)
                 {
@@ -1021,6 +1007,23 @@ namespace Smartstore.Admin.Controllers
                 {
                     NotifyError(ex);
                 }
+            }
+
+            List<SelectListItem> CreateSelectedCategoriesList(int[] ids, TreeNode<ICategoryNode> categoryTree)
+            {
+                if (ids.IsNullOrEmpty())
+                {
+                    return new();
+                }
+
+                return ids
+                    .Where(x => x != 0)
+                    .Select(x =>
+                    {
+                        var node = categoryTree.SelectNodeById(x);
+                        return new SelectListItem { Selected = true, Value = x.ToString(), Text = node == null ? x.ToString() : _categoryService.GetCategoryPath(node) };
+                    })
+                    .ToList();
             }
         }
 

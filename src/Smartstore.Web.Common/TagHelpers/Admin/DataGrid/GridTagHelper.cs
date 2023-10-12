@@ -138,7 +138,7 @@ namespace Smartstore.Web.TagHelpers.Admin
 
         /// <summary>
         /// Grid configuration version. This version is compared with the user preferences version
-        /// saved in browser's localStorage. Ig this version differs, no attempt is made to load
+        /// saved in browser's localStorage. If this version differs, no attempt is made to load
         /// client preferences.
         /// Increment the value if you made changes to the grid columns or any user-customizable option.
         /// </summary>
@@ -322,6 +322,7 @@ namespace Smartstore.Web.TagHelpers.Admin
                 ["saveChanges"] = T("Admin.Common.SaveChanges"),
                 ["cancel"] = T("Common.Cancel"),
                 ["resetState"] = T(resRoot + "ResetState"),
+                ["fitColumns"] = T(resRoot + "FitColumns"),
                 ["noData"] = T(resRoot + "NoData"),
                 ["vborders"] = T(resRoot + "VBorders"),
                 ["hborders"] = T(resRoot + "HBorders"),
@@ -385,7 +386,7 @@ namespace Smartstore.Web.TagHelpers.Admin
                     stickyFooter = StickyFooter,
                     maxHeight = MaxHeight,
                     showSearch = false,
-                    searchPanelWidth = SearchPanel?.Width,
+                    preserveSearchState = SearchPanel?.PreserveState ?? false,
                     stateKey = Id,
                     preserveState = PreserveGridState,
                     version = Version,

@@ -16,17 +16,14 @@ namespace Smartstore.Engine.Modularity
 
         public bool Matches(IModuleDescriptor descriptor, int? storeId)
         {
-            Guard.NotNull(descriptor, nameof(descriptor));
-
-            if (storeId == null)
-            {
-                storeId = _storeContext.CurrentStore.Id;
-            }
+            Guard.NotNull(descriptor);
 
             if (storeId == 0)
             {
                 return true;
             }
+
+            storeId ??= _storeContext.CurrentStore.Id;
 
             var limitedToStoresSetting = _settingService.GetSettingByKey<string>(descriptor.GetSettingKey("LimitedToStores"));
             if (limitedToStoresSetting.IsEmpty())

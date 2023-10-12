@@ -53,6 +53,7 @@ namespace Smartstore.Core.Checkout.Orders
         private readonly ShoppingCartSettings _shoppingCartSettings;
         private readonly LocalizationSettings _localizationSettings;
         private readonly TaxSettings _taxSettings;
+        private readonly PaymentSettings _paymentSettings;
         private readonly Currency _primaryCurrency;
         private readonly Currency _workingCurrency;
 
@@ -84,7 +85,8 @@ namespace Smartstore.Core.Checkout.Orders
             OrderSettings orderSettings,
             ShoppingCartSettings shoppingCartSettings,
             LocalizationSettings localizationSettings,
-            TaxSettings taxSettings)
+            TaxSettings taxSettings,
+            PaymentSettings paymentSettings)
         {
             _db = db;
             _workContext = workContext;
@@ -114,6 +116,7 @@ namespace Smartstore.Core.Checkout.Orders
             _shoppingCartSettings = shoppingCartSettings;
             _localizationSettings = localizationSettings;
             _taxSettings = taxSettings;
+            _paymentSettings = paymentSettings;
 
             _primaryCurrency = currencyService.PrimaryCurrency;
             _workingCurrency = workContext.WorkingCurrency;
@@ -265,6 +268,11 @@ namespace Smartstore.Core.Checkout.Orders
             if (!order.CanCompleteOrder())
             {
                 throw new InvalidOperationException(T("Order.CannotMarkCompleted"));
+            }
+
+            if (_paymentSettings.CapturePaymentReason == CapturePaymentReason.OrderCompleted && await CanCaptureAsync(order))
+            {
+                await CaptureAsync(order);
             }
 
             if (order.CanMarkOrderAsPaid())
@@ -718,28 +726,14 @@ namespace Smartstore.Core.Checkout.Orders
         }
 
         /// <summary>
-        /// Logs errors and adds order notes. The caller is responsible for database commit.
-        /// </summary>
-        /// <param name="order"></param>
-        /// <param name="errors"></param>
-        /// <param name="messageKey"></param>
-        protected virtual void ProcessErrors(Order order, IList<string> errors, string messageKey)
-        {
-            var msg = T(messageKey, order.GetOrderNumber()).ToString() + " " + string.Join(" ", errors);
-
-            order.AddOrderNote(msg);
-            Logger.Error(msg);
-        }
-
-        /// <summary>
         /// Applies reward points. The caller is responsible for database commit.
         /// </summary>
         protected virtual void ApplyRewardPoints(Order order, bool reduce, decimal? amount = null)
         {
             if (!_rewardPointsSettings.Enabled ||
                 _rewardPointsSettings.PointsForPurchases_Amount <= decimal.Zero ||
-                // Ensure that reward points were not added before. We should not add reward points if they were already earned for this order.
-                order.RewardPointsWereAdded ||
+                (!reduce && order.RewardPointsWereAdded) || 
+                (reduce && !order.RewardPointsWereAdded) ||
                 order.Customer == null ||
                 order.Customer.IsGuest())
             {
@@ -787,8 +781,8 @@ namespace Smartstore.Core.Checkout.Orders
         /// </summary>
         protected virtual async Task ActivateGiftCardsAsync(Order order)
         {
-            var activateGiftCards = _orderSettings.GiftCards_Activated_OrderStatusId > 0 && _orderSettings.GiftCards_Activated_OrderStatusId == (int)order.OrderStatus;
-            var deactivateGiftCards = _orderSettings.GiftCards_Deactivated_OrderStatusId > 0 && _orderSettings.GiftCards_Deactivated_OrderStatusId == (int)order.OrderStatus;
+            var activateGiftCards = _orderSettings.GiftCards_Activated_OrderStatusId > 0 && _orderSettings.GiftCards_Activated_OrderStatusId == order.OrderStatusId;
+            var deactivateGiftCards = _orderSettings.GiftCards_Deactivated_OrderStatusId > 0 && _orderSettings.GiftCards_Deactivated_OrderStatusId == order.OrderStatusId;
 
             if (!activateGiftCards && !deactivateGiftCards)
             {
@@ -801,12 +795,14 @@ namespace Smartstore.Core.Checkout.Orders
                 .ApplyOrderFilter(new[] { order.Id })
                 .ToListAsync();
 
-            if (!giftCards.Any())
+            if (giftCards.Count == 0)
             {
                 return;
             }
 
-            var allLanguages = await _db.Languages.AsNoTracking().ToDictionaryAsync(x => x.Id);
+            var customerLanguage = 
+                await _db.Languages.FindByIdAsync(order.CustomerLanguageId, false) ?? 
+                await _db.Languages.AsNoTracking().Where(x => x.Published).OrderBy(x => x.DisplayOrder).FirstOrDefaultAsync();
 
             foreach (var gc in giftCards)
             {
@@ -819,12 +815,8 @@ namespace Smartstore.Core.Checkout.Orders
                         // Send email for virtual gift card.
                         if (gc.RecipientEmail.HasValue() && gc.SenderEmail.HasValue())
                         {
-                            if (!allLanguages.TryGetValue(order.CustomerLanguageId, out var customerLang))
-                            {
-                                customerLang = allLanguages.Values.FirstOrDefault();
-                            }
-
-                            var msgResult = await _messageFactory.SendGiftCardNotificationAsync(gc, customerLang.Id);
+                            var msgResult = await _messageFactory.SendGiftCardNotificationAsync(gc, customerLanguage.Id);
+                            // INFO: QueuedEmail.Id may be 0 here because CheckOrderStatusAsync uses scope commit.
                             isRecipientNotified = msgResult?.Email.Id != null;
                         }
                     }
@@ -894,25 +886,28 @@ namespace Smartstore.Core.Checkout.Orders
 
         protected virtual async Task CheckOrderStatusAsync(Order order)
         {
-            Guard.NotNull(order, nameof(order));
+            Guard.NotNull(order);
 
-            using var scope = new DbContextScope(_db, deferCommit: true);
-
-            if (order.PaymentStatus == PaymentStatus.Paid && !order.PaidDateUtc.HasValue)
+            using (var scope = new DbContextScope(_db, deferCommit: true))
             {
-                order.PaidDateUtc = DateTime.UtcNow;
-            }
+                if (order.PaymentStatus == PaymentStatus.Paid && !order.PaidDateUtc.HasValue)
+                {
+                    order.PaidDateUtc = DateTime.UtcNow;
+                }
 
-            if (order.OrderStatus == OrderStatus.Pending &&
-                (order.PaymentStatus == PaymentStatus.Authorized || order.PaymentStatus == PaymentStatus.Paid))
-            {
-                await SetOrderStatusAsync(order, OrderStatus.Processing, false);
-            }
+                if (order.OrderStatus == OrderStatus.Pending &&
+                    (order.PaymentStatus == PaymentStatus.Authorized || order.PaymentStatus == PaymentStatus.Paid))
+                {
+                    await SetOrderStatusAsync(order, OrderStatus.Processing, false);
+                }
 
-            if (order.OrderStatus == OrderStatus.Pending &&
-                (order.ShippingStatus == ShippingStatus.PartiallyShipped || order.ShippingStatus == ShippingStatus.Shipped || order.ShippingStatus == ShippingStatus.Delivered))
-            {
-                await SetOrderStatusAsync(order, OrderStatus.Processing, false);
+                if (order.OrderStatus == OrderStatus.Pending &&
+                    (order.ShippingStatus == ShippingStatus.PartiallyShipped || order.ShippingStatus == ShippingStatus.Shipped || order.ShippingStatus == ShippingStatus.Delivered))
+                {
+                    await SetOrderStatusAsync(order, OrderStatus.Processing, false);
+                }
+
+                await scope.CommitAsync();
             }
 
             if (order.OrderStatus != OrderStatus.Cancelled &&
@@ -920,10 +915,9 @@ namespace Smartstore.Core.Checkout.Orders
                 order.PaymentStatus == PaymentStatus.Paid &&
                 (order.ShippingStatus == ShippingStatus.ShippingNotRequired || order.ShippingStatus == ShippingStatus.Delivered))
             {
+                // INFO: SetOrderStatusAsync performs commit. Exclude from scope commit because QueuedEmail.Id is required for messages.
                 await SetOrderStatusAsync(order, OrderStatus.Complete, true);
             }
-
-            await scope.CommitAsync();
         }
 
         private async Task<int> SumUpQuantity(OrderItem orderItem, Func<Shipment, bool> predicate)

@@ -122,7 +122,7 @@ namespace Smartstore.Core.Catalog.Categories
                 if (modProps.Keys.Any(x => _h.Contains(x)))
                 {
                     // Hierarchy affecting properties has changed. Nuke each tree.
-                    await _cache.RemoveByPatternAsync(CategoryService.CATEGORY_TREE_PATTERN_KEY);
+                    await _cache.RemoveByPatternAsync(CategoryService.CategoryTreePatternKey);
                     await PublishEvent(CategoryTreeChangeReason.Hierarchy);
                     _invalidated = true;
                 }
@@ -144,7 +144,9 @@ namespace Smartstore.Core.Catalog.Categories
                 else if (modProps.Keys.Any(x => _d.Contains(x)))
                 {
                     // Only data has changed. Don't nuke trees, update corresponding cache entries instead.
-                    var keys = _cache.Keys(CategoryService.CATEGORY_TREE_PATTERN_KEY).ToArray();
+                    var publishEvent = false;
+                    var keys = _cache.Keys(CategoryService.CategoryTreePatternKey).ToArray();
+
                     foreach (var key in keys)
                     {
                         var tree = await _cache.GetAsync<TreeNode<ICategoryNode>>(key);
@@ -153,6 +155,8 @@ namespace Smartstore.Core.Catalog.Categories
                             var node = tree.SelectNodeById(entity.Id);
                             if (node != null)
                             {
+                                publishEvent = true;
+
                                 if (node.Value is CategoryNode value)
                                 {
                                     value.Name = category.Name;
@@ -172,6 +176,11 @@ namespace Smartstore.Core.Catalog.Categories
                                 }
                             }
                         }
+                    }
+
+                    if (publishEvent)
+                    {
+                        await PublishEvent(CategoryTreeChangeReason.Data);
                     }
                 }
             }
@@ -214,7 +223,7 @@ namespace Smartstore.Core.Catalog.Categories
             {
                 // INFO: 'Modified' case already handled in 'OnBeforeSave()'.
                 // Hierarchy affecting change, nuke all.
-                await _cache.RemoveByPatternAsync(CategoryService.CATEGORY_TREE_PATTERN_KEY);
+                await _cache.RemoveByPatternAsync(CategoryService.CategoryTreePatternKey);
                 await PublishEvent(CategoryTreeChangeReason.Hierarchy);
                 _invalidated = true;
             }
@@ -294,7 +303,7 @@ namespace Smartstore.Core.Catalog.Categories
 
         private static string BuildCacheKeyPattern(string includeHiddenToken = "*", string rolesToken = "*", string storeToken = "*")
         {
-            return CategoryService.CATEGORY_TREE_KEY.FormatInvariant(includeHiddenToken, rolesToken, storeToken);
+            return CategoryService.CategoryTreeKey.FormatInvariant(includeHiddenToken, rolesToken, storeToken);
         }
     }
 }

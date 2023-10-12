@@ -7,6 +7,8 @@ namespace Smartstore.Core.Catalog.Products
 {
     public static partial class ProductQueryExtensions
     {
+        #region Apply*
+
         /// <summary>
         /// Applies standard filter for a product query.
         /// Filters out <see cref="Product.IsSystemProduct"/>.
@@ -16,7 +18,7 @@ namespace Smartstore.Core.Catalog.Products
         /// <returns>Product query.</returns>
         public static IQueryable<Product> ApplyStandardFilter(this IQueryable<Product> query, bool includeHidden = false)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             if (!includeHidden)
             {
@@ -36,7 +38,7 @@ namespace Smartstore.Core.Catalog.Products
         /// <returns>Product query.</returns>
         public static IQueryable<Product> ApplySystemNameFilter(this IQueryable<Product> query, string systemName)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             return query.Where(x => x.SystemName == systemName && x.IsSystemProduct);
         }
@@ -49,7 +51,7 @@ namespace Smartstore.Core.Catalog.Products
         /// <returns>Ordered product query.</returns>
         public static IOrderedQueryable<Product> ApplySkuFilter(this IQueryable<Product> query, string sku)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             sku = sku.TrimSafe();
 
@@ -68,7 +70,7 @@ namespace Smartstore.Core.Catalog.Products
         /// <returns>Ordered product query.</returns>
         public static IOrderedQueryable<Product> ApplyGtinFilter(this IQueryable<Product> query, string gtin)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             gtin = gtin.TrimSafe();
 
@@ -87,11 +89,32 @@ namespace Smartstore.Core.Catalog.Products
         /// <returns>Ordered product query.</returns>
         public static IOrderedQueryable<Product> ApplyMpnFilter(this IQueryable<Product> query, string manufacturerPartNumber)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             manufacturerPartNumber = manufacturerPartNumber.TrimSafe();
 
             query = query.Where(x => x.ManufacturerPartNumber == manufacturerPartNumber);
+
+            return query
+                .OrderBy(x => x.DisplayOrder)
+                .ThenBy(x => x.Id);
+        }
+
+        /// <summary>
+        /// Applies a filter to find a product by its SKU, MPN or GTIN and sorts 
+        /// by <see cref="Product.DisplayOrder"/>, then by <see cref="BaseEntity.Id"/>.
+        /// </summary>
+        /// <param name="query">Product query.</param>
+        /// <param name="code">A product code like SKU, MPN or GTIN.</param>
+        /// <returns>Ordered product query.</returns>
+        public static IOrderedQueryable<Product> ApplyProductCodeFilter(this IQueryable<Product> query, string code)
+        {
+            Guard.NotNull(query);
+            Guard.NotEmpty(code);
+
+            code = code.Trim();
+
+            query = query.Where(x => x.Sku == code || x.ManufacturerPartNumber == code || x.Gtin == code);
 
             return query
                 .OrderBy(x => x.DisplayOrder)
@@ -107,8 +130,8 @@ namespace Smartstore.Core.Catalog.Products
         /// <returns>Product query.</returns>
         public static IOrderedQueryable<Product> ApplyAssociatedProductsFilter(this IQueryable<Product> query, int[] groupedProductIds, bool includeHidden = false)
         {
-            Guard.NotNull(query, nameof(query));
-            Guard.NotNull(groupedProductIds, nameof(groupedProductIds));
+            Guard.NotNull(query);
+            Guard.NotNull(groupedProductIds);
 
             // Ignore multistore. Expect multistore setting for associated products is the same as for parent grouped product.
             query = query
@@ -121,12 +144,44 @@ namespace Smartstore.Core.Catalog.Products
         }
 
         /// <summary>
+        /// Applies a filter that reads all products that are descendants of the category with the given <paramref name="treePath"/>.
+        /// </summary>
+        /// <param name="treePath">The parent's tree path to get descendant products from.</param>
+        /// <param name="includeSelf"><c>true</c> = add the products of the parent category to the result list, <c>false</c> = ignore the parent category.</param>
+        public static IQueryable<Product> ApplyDescendantsFilter(
+            this IQueryable<Product> query,
+            string treePath,
+            bool includeSelf = false)
+        {
+            Guard.NotNull(query);
+            Guard.NotEmpty(treePath);
+
+            if (treePath.Length < 3 || (treePath[0] != '/' && treePath[^1] != '/'))
+            {
+                throw new ArgumentException("Invalid treePath format.", nameof(treePath));
+            }
+
+            query = 
+                from p in query
+                from pc in p.ProductCategories
+                let c = pc.Category
+                where c.TreePath.StartsWith(treePath) && (includeSelf || c.TreePath.Length > treePath.Length)
+                select p;
+
+            return query;
+        }
+
+        #endregion
+
+        #region Include*
+
+        /// <summary>
         /// Includes media for eager loading:
         /// <see cref="Product.ProductMediaFiles"/> (sorted by <see cref="ProductMediaFile.DisplayOrder"/>), then <see cref="ProductMediaFile.MediaFile"/>
         /// </summary>
         public static IIncludableQueryable<Product, MediaFile> IncludeMedia(this IQueryable<Product> query)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             return query.Include(x => x.ProductMediaFiles.OrderBy(y => y.DisplayOrder))
                 .ThenInclude(x => x.MediaFile);
@@ -139,9 +194,11 @@ namespace Smartstore.Core.Catalog.Products
         /// </summary>
         public static IIncludableQueryable<Product, MediaFile> IncludeManufacturers(this IQueryable<Product> query)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
-            return query.Include(x => x.ProductMediaFiles.OrderBy(y => y.DisplayOrder)).ThenInclude(x => x.MediaFile);
+            return query.Include(x => x.ProductManufacturers.OrderBy(y => y.DisplayOrder).ThenBy(x => x.Manufacturer.Name))
+                .ThenInclude(x => x.Manufacturer)
+                .ThenInclude(x => x.MediaFile);
         }
 
         /// <summary>
@@ -151,7 +208,7 @@ namespace Smartstore.Core.Catalog.Products
         /// </summary>
         public static IIncludableQueryable<Product, Product> IncludeBundleItems(this IQueryable<Product> query)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             return query.Include(x => x.ProductBundleItems
                 .Where(y => y.Published)
@@ -166,7 +223,7 @@ namespace Smartstore.Core.Catalog.Products
         /// </summary>
         public static IIncludableQueryable<Product, Customer> IncludeReviews(this IQueryable<Product> query)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             // INFO: using .Take(x) will fail due to TPH inheritance. EF bug?
 
@@ -226,5 +283,7 @@ namespace Smartstore.Core.Catalog.Products
 
         //    return megaInclude;
         //}
+
+        #endregion
     }
 }

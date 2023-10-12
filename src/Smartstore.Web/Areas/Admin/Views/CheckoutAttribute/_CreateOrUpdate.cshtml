@@ -89,7 +89,7 @@
                         <smart-label asp-for="IsTaxExempt" />
                     </div>
                     <div class="adminData">
-                        @Html.CheckBoxFor(model => model.IsTaxExempt, new { data_toggler_for = "#pnlTaxCategory" })
+                        @Html.CheckBoxFor(model => model.IsTaxExempt, new { data_toggler_for = "#pnlTaxCategory", data_toggler_reverse = "true" })
                         <span asp-validation-for="IsTaxExempt"></span>
                     </div>
                 </div>
@@ -132,17 +132,22 @@
             </div>
         </div>
     </tab>
-    <tab sm-title="@T("Admin.Catalog.Attributes.CheckoutAttributes.Values")" sm-adaptive-height="true">
-        @if (Model.Id > 0)
-        {
-            var gridViewData = new ViewDataDictionary(ViewData);
-            gridViewData["CheckoutAttributeId"] = Model.Id;
+    @if (Model.Id == 0 || (Model.Id > 0 && Model.IsListTypeAttribute))
+    {
+        <tab sm-title="@T("Admin.Catalog.Attributes.CheckoutAttributes.Values")" sm-adaptive-height="true">
+            @if (Model.Id > 0)
+            {
+                var gridViewData = new ViewDataDictionary(ViewData);
+                gridViewData["CheckoutAttributeId"] = Model.Id;
 
-            <partial name="_Grid.CheckoutAttributeValues" model="null" view-data="gridViewData" />
-        }
-        else
-        {
-            @T("Admin.Configuration.Countries.States.SaveBeforeEdit")
-        }
-    </tab>
+                <partial name="_Grid.CheckoutAttributeValues" model="null" view-data="gridViewData" />
+            }
+            else
+            {
+                <div class="alert alert-warning">
+                    @T("Admin.SaveBeforeEdit")
+                </div>
+            }
+        </tab>
+    }
 </tabstrip>

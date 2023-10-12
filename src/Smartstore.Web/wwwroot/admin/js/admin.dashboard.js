@@ -6,7 +6,7 @@ Smartstore.Admin.Charts = {
         const colorSuccess = style.getPropertyValue('--success');
         const colorWarning = style.getPropertyValue('--warning');
         const colorDanger = style.getPropertyValue('--danger');
-        const fontFamily = style.getPropertyValue('--font-family-sans-serif');
+        const fontFamily = style.getPropertyValue('--font-sans-serif');
 
         const customTooltip = function (tooltip) {
             const canvas = this._chart.canvas;
@@ -89,12 +89,13 @@ Smartstore.Admin.Charts = {
                 chevronEl.classList.remove('d-none');
                 percentEl.classList.add('text-success');
                 percentEl.classList.remove('text-danger');
-                delta = '+' + Math.abs(datasets.PercentageDelta) + '%';;
+                delta = '+' + Math.abs(datasets.PercentageDelta) + '%';
             }
             else {
                 chevronEl.classList.add('d-none');
             }
             percentEl.innerText = delta;
+            percentEl.title = datasets.PercentageDescription;
             sumEl.innerText = datasets.TotalAmountFormatted;
         }
 

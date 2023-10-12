@@ -11,6 +11,8 @@ namespace Smartstore.Core.Data.Migrations
     {
         public override void Up()
         {
+            FixInvalidParentCategoryIds();
+
             // Make Category.ParentCategoryId nullable and create FK
             Alter.Column("ParentCategoryId").OnTable(nameof(Category)).AsInt32().Nullable();
 
@@ -39,41 +41,22 @@ namespace Smartstore.Core.Data.Migrations
 
         public bool RollbackOnFailure => false;
 
-        public async Task SeedAsync(SmartDbContext context, CancellationToken cancelToken = default)
+        public Task SeedAsync(SmartDbContext context, CancellationToken cancelToken = default)
         {
-            var folders = await context.MediaFolders
-                .Include(x => x.Children)
-                .Where(x => x.ParentId == null)
-                .ToListAsync(cancelToken);
+            return CategoryService.RebuidTreePathsAsync(context, cancelToken);
+        }
 
-            foreach (var folder in folders)
+        private void FixInvalidParentCategoryIds()
+        {
+            try
             {
-                BuildTreePath(folder);
+                IfDatabase("sqlserver").Execute.Sql(@"
+                    UPDATE [dbo].[Category] SET ParentCategoryId = 0
+                    WHERE [Id] In (SELECT [Id] FROM [dbo].[Category] c1 WHERE c1.ParentCategoryId <> 0 AND NOT EXISTS (SELECT 1 FROM [dbo].[Category] c2 WHERE c2.Id = c1.ParentCategoryId))
+                ");
             }
-            await context.SaveChangesAsync(cancelToken);
-
-            var categories = await context.Categories
-                .Include(x => x.Children)
-                .Where(x => x.ParentId == null)
-                .ToListAsync(cancelToken);
-
-            foreach (var category in categories)
+            catch
             {
-                BuildTreePath(category);
-            }
-            await context.SaveChangesAsync(cancelToken);
-
-            static void BuildTreePath(ITreeNode node)
-            {
-                node.TreePath = node.BuildTreePath();
-                var childNodes = node.GetChildNodes();
-                if (!childNodes.IsNullOrEmpty())
-                {
-                    foreach (var childNode in childNodes)
-                    {
-                        BuildTreePath(childNode);
-                    }
-                }
             }
         }
     }

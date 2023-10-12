@@ -24,7 +24,7 @@ namespace Smartstore.Google.Analytics
         private readonly IProviderManager _providerManager;
         private readonly WidgetSettings _widgetSettings;
 
-        public Module(IProviderManager providerManager, WidgetSettings widgetSettings)
+        public Module(IProviderManager providerManager,  WidgetSettings widgetSettings)
         {
             _providerManager = providerManager;
             _widgetSettings = widgetSettings;
@@ -40,7 +40,9 @@ namespace Smartstore.Google.Analytics
         {
             var widget = _providerManager.GetProvider<IActivatableWidget>("Smartstore.Google.Analytics");
             if (!widget.IsWidgetActive(_widgetSettings))
+            {
                 return Task.FromResult(Enumerable.Empty<CookieInfo>());
+            }
 
             var cookieInfo = new CookieInfo
             {

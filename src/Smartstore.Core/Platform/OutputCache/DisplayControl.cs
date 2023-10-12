@@ -9,6 +9,7 @@ using Smartstore.Core.Catalog.Discounts;
 using Smartstore.Core.Catalog.Pricing;
 using Smartstore.Core.Catalog.Products;
 using Smartstore.Core.Content.Media;
+using Smartstore.Core.Content.Menus;
 using Smartstore.Core.Content.Topics;
 using Smartstore.Core.Data;
 using Smartstore.Core.Localization;
@@ -34,6 +35,8 @@ namespace Smartstore.Core.OutputCache
             [typeof(ProductCategory)] = (x, d, c) => ToTask("p" + ((ProductCategory)x).CategoryId, "p" + ((ProductCategory)x).ProductId),
             [typeof(ProductManufacturer)] = (x, d, c) => ToTask("p" + ((ProductManufacturer)x).ManufacturerId, "p" + ((ProductManufacturer)x).ProductId),
             [typeof(Topic)] = (x, d, c) => ToTask("t" + x.Id),
+            [typeof(MenuEntity)] = (x, d, c) => ToTask("mnu" + x.Id),
+            [typeof(MenuItemEntity)] = (x, d, c) => ToTask("mnu" + ((MenuItemEntity)x).MenuId),
             [typeof(MediaFile)] = (x, d, c) => ToTask("mf" + x.Id),
             [typeof(SpecificationAttributeOption)] = HandleSpecificationAttributeOptionsAsync,
             [typeof(ProductTag)] = HandleProductTagsAsync,
@@ -189,13 +192,6 @@ namespace Smartstore.Core.OutputCache
 
             switch (lp.LocaleKeyGroup)
             {
-                //// TODO: (core) Move this to Blog & News modules somehow.
-                //case nameof(BlogPost):
-                //    prefix = "b";
-                //    break;
-                //case nameof(NewsItem):
-                //    prefix = "n";
-                //    break;
                 case nameof(Product):
                     prefix = "p";
                     break;

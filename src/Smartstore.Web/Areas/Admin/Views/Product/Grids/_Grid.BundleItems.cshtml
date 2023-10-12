@@ -36,7 +36,7 @@
         <zone name="datagrid_toolbar_omega"></zone>
         <toolbar-group>
             <button datagrid-action="DataGridToolAction.DeleteSelectedRows" type="button" class="btn btn-danger no-anims btn-flat">
-                <i class="far fa-trash-alt"></i>
+                <i class="far fa-trash-can"></i>
                 <span>@T("Admin.Common.Delete.Selected")</span>
             </button>
         </toolbar-group>
@@ -44,7 +44,7 @@
     <columns>
         <column for="ProductName" hideable="false" width="4fr" readonly entity-member="Product.Name">
             <display-template>
-                @Html.LabeledProductName()
+                @Html.LabeledProductName(urlExpression: "item.row.ProductEditUrl", valueExpression: "item.row.ProductName")
             </display-template>
         </column>
         <column for="Sku" width="1fr" entity-member="Product.Sku" />
@@ -86,7 +86,7 @@
             var id = $(this).data("key");
             var href = '@Url.Content("~/Admin/Product/BundleItemEditPopup/")' + id + '?btnId=btnRefreshBundleItems&formId=product-form';
             openPopup(href);
-			return false;
+            return true;
         });
 
         // Refresh grid after popup edit dialog was closed.

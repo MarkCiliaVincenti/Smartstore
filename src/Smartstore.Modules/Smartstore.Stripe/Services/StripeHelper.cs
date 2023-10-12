@@ -93,7 +93,46 @@ namespace Smartstore.StripeElements.Services
             return stripePaymentRequest;
         }
 
+        public async Task<string> GetWebHookIdAsync(string secrectApiKey, string storeUrl)
+        {
+            StripeConfiguration.ApiKey = secrectApiKey;
+
+            var service = new WebhookEndpointService();
+            var webhooks = await service.ListAsync(new WebhookEndpointListOptions
+            {
+                Limit = 10
+            });
+
+            // Check if webhook already exists
+            if (webhooks.Data.Count < 1 || !webhooks.Data.Any(x => x.Url.ContainsNoCase(storeUrl)))
+            {
+                // Create webhook
+                var createOptions = new WebhookEndpointCreateOptions
+                {
+                    ApiVersion = Module.ApiVersion,
+                    Url = storeUrl + "stripe/webhookhandler",
+                    EnabledEvents = new List<string>
+                    {
+                        "payment_intent.succeeded",
+                        "payment_intent.canceled",
+                        "charge.refunded"
+                    }
+                };
+
+                var webhook = await service.CreateAsync(createOptions);
+
+                return webhook.Id;
+            }
+            else
+            {
+                return webhooks.Data.Where(x => x.Url.ContainsNoCase(storeUrl)).FirstOrDefault()?.Id;
+            }
+        }
+
         public Task<bool> IsStripeElementsActive()
-            => _paymentService.IsPaymentMethodActiveAsync(StripeElementsProvider.SystemName, null, _services.StoreContext.CurrentStore.Id);
+            => _paymentService.IsPaymentProviderActiveAsync(StripeElementsProvider.SystemName, null, _services.StoreContext.CurrentStore.Id);
+
+        public Task<bool> IsStripeElementsEnabled()
+            => _paymentService.IsPaymentProviderEnabledAsync(StripeElementsProvider.SystemName, _services.StoreContext.CurrentStore.Id);
     }
 }

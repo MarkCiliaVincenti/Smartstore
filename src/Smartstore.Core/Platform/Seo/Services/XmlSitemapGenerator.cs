@@ -7,6 +7,7 @@ using Smartstore.Core.Configuration;
 using Smartstore.Core.Data;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Localization;
+using Smartstore.Core.Seo.Routing;
 using Smartstore.Core.Stores;
 using Smartstore.Data;
 using Smartstore.Data.Hooks;
@@ -295,7 +296,7 @@ namespace Smartstore.Core.Seo
                 // Impersonate
                 var prevCustomer = _services.WorkContext.CurrentCustomer;
                 // no need to vary xml sitemap by customer roles: it's relevant to crawlers only.
-                _services.WorkContext.CurrentCustomer = (await _customerService.GetCustomerBySystemNameAsync(SystemCustomerNames.SearchEngine, false)) ?? prevCustomer;
+                _services.WorkContext.CurrentCustomer = (await _customerService.GetCustomerBySystemNameAsync(SystemCustomerNames.Bot, false)) ?? prevCustomer;
 
                 try
                 {
@@ -425,7 +426,7 @@ namespace Smartstore.Core.Seo
 
         private async Task<string> BuildBaseUrlAsync(Store store, Language language)
         {
-            var host = _services.StoreContext.CurrentStore.GetHost();
+            var host = store.GetBaseUrl();
 
             var localizationSettings = await _services.SettingFactory.LoadSettingsAsync<LocalizationSettings>(store.Id);
             if (localizationSettings.SeoFriendlyUrlsForLanguagesEnabled)
@@ -632,7 +633,7 @@ namespace Smartstore.Core.Seo
 
         private static string GetSitemapIndexUrl(int index, string baseUrl)
         {
-            return baseUrl + SitemapIndexPathPattern.FormatInvariant(index);
+            return RouteHelper.NormalizePathComponent(baseUrl + SitemapIndexPathPattern.FormatInvariant(index));
         }
 
         private XmlSitemapProvider[] CreateProviders(XmlSitemapBuildContext context)
@@ -699,16 +700,20 @@ namespace Smartstore.Core.Seo
         public virtual void InvalidateAll()
         {
             var dir = BuildSitemapDirPath(null, null);
-            foreach (var subDir in _tenantRoot.EnumerateDirectories(dir).ToArray())
+
+            if (_tenantRoot.DirectoryExists(dir))
             {
-                // Delete only directories, no lock files.
-                subDir.Delete();
+                foreach (var subDir in _tenantRoot.EnumerateDirectories(dir).ToArray())
+                {
+                    // Delete only directories, no lock files.
+                    subDir.Delete();
+                }
             }
         }
 
         #region Nested classes
 
-        struct NodeEntry
+        readonly struct NodeEntry
         {
             public NamedEntity Entry { get; init; }
             public XmlSitemapProvider Provider { get; init; }

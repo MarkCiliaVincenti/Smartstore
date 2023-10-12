@@ -1,6 +1,7 @@
 ﻿#nullable enable
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -183,6 +184,7 @@ namespace Smartstore
         /// <param name="value">The input string</param>
         /// <returns>xxHash</returns>
         [DebuggerStepThrough]
+        [return: NotNullIfNotNull(nameof(value))]
         public static string? XxHash(this string? value)
         {
             if (value.IsEmpty())
@@ -197,6 +199,7 @@ namespace Smartstore
         /// </summary>
         [DebuggerStepThrough]
         [Obsolete("Microsoft recommends SHA256 or SHA512 class instead of MD5. Use MD5 only for compatibility with legacy applications and data.")]
+        [return: NotNullIfNotNull(nameof(value))]
         public static string? Hash(this string? value, Encoding encoding, bool toBase64 = false)
         {
             if (value.IsEmpty())
@@ -218,35 +221,54 @@ namespace Smartstore
             }
         }
 
+        /// <summary>
+        /// Converts an uri component to its escaped representation.
+        /// Don't pass full uris to this method because it will also escape reserved chars (/?=#.&:;$@),
+        /// pass only fragments like query key/value, filename etc.
+        /// </summary>
+        /// <param name="value">The uri component to escape.</param>
+        /// <returns>The escaped uri component.</returns>
+        /// <remarks>This method internally calls <see cref="Uri.EscapeDataString(string)"/>.</remarks>
         [DebuggerStepThrough]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [return: NotNullIfNotNull(nameof(value))]
         public static string? UrlEncode(this string? value)
-            => HttpUtility.UrlEncode(value);
+            => value.IsEmpty() ? value : Uri.EscapeDataString(value!);
 
+        /// <summary>
+        /// Converts an escaped uri component to its unescaped representation.
+        /// </summary>
+        /// <param name="value">The uri component to unescape.</param>
+        /// <returns>The unescaped uri component.</returns>
+        /// <remarks>This method internally calls <see cref="Uri.UnescapeDataString(string)"/>.</remarks>
         [DebuggerStepThrough]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [return: NotNullIfNotNull(nameof(value))]
         public static string? UrlDecode(this string? value)
-            => HttpUtility.UrlDecode(value);
+            => value.IsEmpty() ? value : Uri.UnescapeDataString(value!);
 
         [DebuggerStepThrough]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [return: NotNullIfNotNull(nameof(value))]
         public static string? AttributeEncode(this string? value)
             => HttpUtility.HtmlAttributeEncode(value);
 
         [DebuggerStepThrough]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [return: NotNullIfNotNull(nameof(value))]
         public static string? HtmlEncode(this string? value)
             => HttpUtility.HtmlEncode(value);
 
         [DebuggerStepThrough]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [return: NotNullIfNotNull(nameof(value))]
         public static string? HtmlDecode(this string? value)
             => HttpUtility.HtmlDecode(value);
 
-        public static string? EncodeJsString(this string? value)
+        public static string EncodeJsString(this string? value)
             => EncodeJsString(value, '"', true);
 
-        public static string? EncodeJsString(this string? value, char delimiter, bool appendDelimiters)
+        public static string EncodeJsString(this string? value, char delimiter, bool appendDelimiters)
         {
             var result = value.HasValue()
                 ? JavaScriptEncoder.Default.Encode(value!)
@@ -261,7 +283,7 @@ namespace Smartstore
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static string? SanitizeHtmlId(this string? value)
+        public static string SanitizeHtmlId(this string? value)
         {
             return TagBuilder.CreateSanitizedId(value, "_");
         }

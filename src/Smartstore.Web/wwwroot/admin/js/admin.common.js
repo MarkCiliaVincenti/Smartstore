@@ -60,6 +60,34 @@ Smartstore.Admin = {
             });
         }
     },
+    syncPaymentAdditionalFeePostfix: function () {
+        // INFO: (mw) Think THOROUGHLY about var and method naming. Take some time!
+        // INFO: (mw) DRY: don't touch a million files for such simple UI helpers. Always try to find a central approach.
+
+        // Switch between the currency code and the percent sign in the postfix 
+        // of the additional fee on payment configuration.
+        let usePercentCheckbox = $('#AdditionalFeePercentage');
+        let feePostfix = $('#AdditionalFee').parent().find('.numberinput-postfix').first();
+
+        if (feePostfix.length) {
+            let currencyCode = feePostfix.text();
+
+            // Update the postfix text depending on the checkbox state.
+            function updateFeePostfix() {
+                if (usePercentCheckbox.is(':checked')) {
+                    feePostfix.text('%');
+                } else {
+                    feePostfix.text(currencyCode);
+                }
+            }
+
+            // Make sure the postfix matches the setting on page init.
+            updateFeePostfix();
+
+            // Sync postfix on checkbox change.
+            usePercentCheckbox.on('change', updateFeePostfix);
+        }
+    },
     togglePanel: function (el /* the toggler */, animate) {
         var ctl = $(el),
             show = ctl.is(':checked'),

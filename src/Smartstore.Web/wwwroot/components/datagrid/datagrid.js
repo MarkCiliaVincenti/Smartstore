@@ -21,7 +21,7 @@ Vue.component("pass", {
 Vue.component("sm-datagrid", {
     template: `
         <div class="datagrid" 
-            :style="{ maxHeight: options.maxHeight, '--dg-search-width': options.searchPanelWidth }" 
+            :style="{ maxHeight: options.maxHeight }" 
             :class="{ 'datagrid-has-search': hasSearchPanel, 'datagrid-ready': ready }" 
             ref="grid">
 
@@ -70,8 +70,8 @@ Vue.component("sm-datagrid", {
                             <tr ref="tableHeaderRow" class="dg-tr">
                                 <th v-if="allowRowSelection || hasDetailView" class="dg-th dg-col-selector dg-col-pinned alpha">
                                     <label v-if="allowRowSelection" class="dg-cell dg-cell-header dg-cell-selector w-100 ml-auto">
-                                        <span class="dg-cell-value">
-                                            <input type="checkbox" class="dg-cell-selector-checkbox" ref="masterSelector" @change="onSelectAllRows($event)" />
+                                        <span class="dg-cell-value" style="overflow: initial">
+                                            <input type="checkbox" class="dg-cell-selector-checkbox form-check-input" ref="masterSelector" @change="onSelectAllRows($event)" />
                                         </span>
                                     </label>
                                 </th>            
@@ -126,8 +126,8 @@ Vue.component("sm-datagrid", {
                                             <i class="fa fa-chevron-right fa-sm"></i>
                                         </div>
                                         <label v-if="allowRowSelection" class="dg-cell dg-cell-selector w-100">
-                                            <span v-if="!isInlineEditRow(row) || !editing.insertMode" class="dg-cell-value">
-                                                <input type="checkbox" class="dg-cell-selector-checkbox" :checked="isRowSelected(row)" @change="onSelectRow($event, row)" />
+                                            <span v-if="!isInlineEditRow(row) || !editing.insertMode" class="dg-cell-value" style="overflow: initial">
+                                                <input type="checkbox" class="dg-cell-selector-checkbox form-check-input" :checked="isRowSelected(row)" @change="onSelectRow($event, row)" />
                                             </span>
                                         </label>
                                     </td>
@@ -425,13 +425,20 @@ Vue.component("sm-datagrid", {
         });
         resizeObserver.observe(this.$refs.tableWrapper);
 
-        // Bind search control events
+        // Bind search control data and events
         if (this.hasSearchPanel) {
             var readWhenNotBusy = function () {
                 if (!self.isBusy)
                     self.read();
             };
-            var search = $(this.$el).find(".dg-search-body");
+
+            let search = $(this.$el).find(".dg-search-body");
+
+            // Restore search filter state
+            if (this.options.preserveSearchState) {
+                this._restoreSearchFilterState(search);
+            }
+
             search.on("change", "select", readWhenNotBusy);
             search.on("change", "input[type='checkbox'], input[type='radio']", readWhenNotBusy);
             search.on("keydown focusout", "textarea, input", e => {
@@ -1157,12 +1164,15 @@ Vue.component("sm-datagrid", {
                 this.updateRememberedColumnWidth(column);
             }
             else {
-                this.columns.filter(c => c.resizable).forEach(c =>
-                {
-                    c.width = 'max-content';
-                    this.updateRememberedColumnWidth(c);
-                });
+                this.autoSizeAllColumns();
             }
+        },
+
+        autoSizeAllColumns() {
+            this.columns.filter(c => c.resizable).forEach(c => {
+                c.width = 'max-content';
+                this.updateRememberedColumnWidth(c);
+            });
         },
 
         // #endregion
@@ -1423,16 +1433,20 @@ Vue.component("sm-datagrid", {
             this.numSearchFilters = 0;
             if (this.hasSearchPanel) {
                 const form = $(this.$el).find(".dg-search-body");
-                const obj = form.serializeToJSON();
+                const state = _.omit(form.serializeToJSON(), (value, key) => {
+                    // Omit empty props
+                    return _.isEmpty(value);
+                });
 
-                this.numSearchFilters = Object.keys(obj)
+                this.numSearchFilters = Object.keys(state)
                     .filter(key => {
-                        const o = obj[key];
+                        const o = state[key];
                         const el = form.find("[name='" + key + "']");
                         let defaultValue = el.data("default");
                         if (defaultValue === undefined) {
                             defaultValue = "";
                         }
+
                         if (_.isArray(o)) {
                             return o.length > 0 || (o.length === 1 && o[0]);
                         }
@@ -1440,12 +1454,43 @@ Vue.component("sm-datagrid", {
                             return _.isBoolean(defaultValue) ? o != defaultValue : o === true;
                         }
 
-                        return o !== defaultValue;
-
+                        return o !== defaultValue && !el.is(":hidden");
                     })
                     .length;
 
-                $.extend(true, command, obj);
+                $.extend(true, command, state);
+
+                // Remember filter state for next request
+                if (this.options.preserveSearchState) {
+                    this._rememberSearchFilterState(state);
+                }
+            }
+        },
+
+        _rememberSearchFilterState(state) {
+            var key = 'sm:grid:filters:' + this.options.stateKey;
+            if (_.isEmpty(state)) {
+                localStorage.removeItem(key);
+            }
+            else {
+                state.version = this.options.version;
+                localStorage.setItem(key, JSON.stringify(state));
+            }
+        },
+
+        _restoreSearchFilterState(form) {
+            const state = JSON.parse(localStorage.getItem('sm:grid:filters:' + this.options.stateKey));
+            if (state?.version === this.options.version) {
+                try {
+                    form.deserialize(state);
+                    if (Object.keys(state).length > 1 && ResponsiveBootstrapToolkit.is(">=xl")) {
+                        this.options.showSearch = true;
+                    }
+                }
+                catch
+                {
+                    this._rememberSearchFilterState(null);
+                }
             }
         },
 
@@ -1456,12 +1501,17 @@ Vue.component("sm-datagrid", {
             // Set isBusy = true to prevent read() from accessing the database every time an element is updated.
             this.isBusy = true;
 
+            // Remove stored filter state
+            this._rememberSearchFilterState(null);
+
             Object.keys(obj)
                 .forEach(key => {
                     const el = form.find("[name='" + key + "']");
                     el.val(null);
-                    // Trigger change must be called here for every selectbox else they won't change display. The final event trigger is called a little later.
-                    // Numbers must also be triggered, otherwise initial values might still be visible and are overlaying placeholder.
+                    // Trigger change must be called here for every selectbox, otherwise they won't change display. 
+                    // The final event trigger is called a little later.
+                    // Numbers must also be triggered, otherwise initial values might 
+                    // still be visible and will overlay placeholders.
                     if (el.is("select") || el.is("[type='number']")) {
                         el.trigger('change');
                     }

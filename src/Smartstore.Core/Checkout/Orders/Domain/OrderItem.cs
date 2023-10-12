@@ -49,6 +49,13 @@ namespace Smartstore.Core.Checkout.Orders
         public int ProductId { get; set; }
 
         /// <summary>
+        /// Gets or sets the stock keeping unit (SKU).
+        /// This is either the SKU of the product variant if a variant was ordered, otherwise the product SKU.
+        /// </summary>
+        [StringLength(400)]
+        public string Sku { get; set; }
+
+        /// <summary>
         /// Gets or sets the quantity
         /// </summary>
         public int Quantity { get; set; }
@@ -107,7 +114,7 @@ namespace Smartstore.Core.Checkout.Orders
             }
         }
 
-        [NotMapped]
+        [NotMapped, IgnoreDataMember]
         public ProductVariantAttributeSelection AttributeSelection
             => _attributeSelection ??= new(RawAttributes);
 
@@ -177,7 +184,6 @@ namespace Smartstore.Core.Checkout.Orders
         /// <summary>
         /// Gets or sets the associated gift card
         /// </summary>
-        [IgnoreDataMember]
         public ICollection<GiftCard> AssociatedGiftCards
         {
             get => _associatedGiftCards ?? LazyLoader.Load(this, ref _associatedGiftCards) ?? (_associatedGiftCards ??= new HashSet<GiftCard>());

@@ -4,7 +4,6 @@
 // could put our custom variables. This way we gain more flexibility.
 // ===========================================================================
 
-@import "mixins";
 @import "root";
 @import "reboot";
 @import "type";
@@ -13,6 +12,7 @@
 @import "grid";
 @import "tables";
 @import "forms";
+@import "floating-labels";
 @import "buttons";
 @import "transitions";
 @import "dropdown";
@@ -31,9 +31,17 @@
 @import "media";
 @import "list-group";
 @import "close";
+//@import "toasts";
 @import "modal";
 @import "tooltip";
 @import "popover";
 @import "carousel";
-@import "utilities";
+@import "spinners";
+@import "placeholders";
 @import "print";
+
+// Helpers
+@import "helpers";
+
+// Utilities
+@import "utilities/api";

@@ -65,15 +65,28 @@ namespace Smartstore.Web.Components
                 ShowLegalInfo = _taxSettings.ShowLegalHintsInFooter,
                 ShowThemeSelector = availableStoreThemes.Count > 1,
                 HideNewsletterBlock = _customerSettings.HideNewsletterBlock,
-                ShowSocialLinks = _socialSettings.ShowSocialLinksInFooter,
-                FacebookLink = _socialSettings.FacebookLink,
-                TwitterLink = _socialSettings.TwitterLink,
-                PinterestLink = _socialSettings.PinterestLink,
-                YoutubeLink = _socialSettings.YoutubeLink,
-                InstagramLink = _socialSettings.InstagramLink,
+                ShowSocialLinks = _socialSettings.ShowSocialLinksInFooter
             };
 
-            var shippingInfoUrl = await Url.TopicAsync("shippinginfo");
+            if (model.ShowSocialLinks)
+            {
+                TryAddSocialLink(_socialSettings.FacebookLink, "facebook-f", "Facebook");
+                TryAddSocialLink(_socialSettings.TwitterLink, "twitter", "Twitter");
+                TryAddSocialLink(_socialSettings.InstagramLink, "instagram", "Instagram");
+                TryAddSocialLink(_socialSettings.TikTokLink, "tiktok", "TikTok");
+                TryAddSocialLink(_socialSettings.YoutubeLink, "youtube", "Youtube");
+                TryAddSocialLink(_socialSettings.VimeoLink, "vimeo", "Vimeo");
+                TryAddSocialLink(_socialSettings.PinterestLink, "pinterest-p", "Pinterest");
+                TryAddSocialLink(_socialSettings.SnapchatLink, "snapchat", "Snapchat");
+                TryAddSocialLink(_socialSettings.FlickrLink, "flickr", "Flickr");
+                TryAddSocialLink(_socialSettings.LinkedInLink, "linkedin", "LinkedIn");
+                TryAddSocialLink(_socialSettings.XingLink, "xing", "Xing");
+                TryAddSocialLink(_socialSettings.TumblrLink, "tumblr", "Tumblr");
+                TryAddSocialLink(_socialSettings.ElloLink, "ello", "Ello");
+                TryAddSocialLink(_socialSettings.BehanceLink, "behance", "Behance");
+            }
+
+            var shippingInfoUrl = await Url.TopicAsync("ShippingInfo");
             if (shippingInfoUrl.HasValue())
             {
                 model.LegalInfo = T("Tax.LegalInfoFooter", taxInfo, shippingInfoUrl);
@@ -104,6 +117,14 @@ namespace Smartstore.Web.Components
             }
 
             return View(model);
+
+            void TryAddSocialLink(string href, string cssClass, string displayName)
+            {
+                if (href.HasValue())
+                {
+                    model.AddSocialLink(href, cssClass, displayName);
+                }
+            }
         }
 
         private bool ShouldRenderGDPR()

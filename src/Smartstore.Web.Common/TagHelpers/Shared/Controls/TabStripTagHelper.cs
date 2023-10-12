@@ -392,7 +392,7 @@ namespace Smartstore.Web.TagHelpers.Shared
             {
                 // Create nav-toggler header
                 var collapsePaneId = $"collapse-{paneId}";
-                
+
                 TagBuilder collapseHeader = new("h5");
                 collapseHeader.Attributes.Add("class", "nav-toggler");
                 collapseHeader.Attributes.Add("data-toggle", "collapse");
@@ -462,6 +462,11 @@ namespace Smartstore.Web.TagHelpers.Shared
                 // Link/Target
                 var itemId = "#" + tab.Id;
                 a.AppendCssClass("nav-link" + (tab.Selected ? " active" : ""));
+
+                if (tab.LinkClass.HasValue())
+                {
+                    a.AppendCssClass(tab.LinkClass);
+                }
 
                 if (!tab.TabInnerContent.IsEmptyOrWhiteSpace)
                 {

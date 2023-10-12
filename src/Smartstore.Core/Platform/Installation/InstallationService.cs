@@ -197,6 +197,11 @@ namespace Smartstore.Core.Installation
                 settings.DbFactory = dbFactory;
                 settings.ConnectionString = conString;
 
+                if (model.UseCustomCollation)
+                {
+                    settings.Collation = model.Collation;
+                }
+
                 // So that DataSettings.DatabaseIsInstalled() returns false during installation.
                 DataSettings.SetTestMode(true);
 
@@ -250,21 +255,6 @@ namespace Smartstore.Core.Installation
                     x.ProgressMessage = GetResource("Progress.BuildingDatabase");
                     Logger.Info(x.ProgressMessage);
                 });
-
-                #region Test
-                //var num = 15;
-                //for (var i = 1; i <= num; i++)
-                //{
-                //    cancelToken.ThrowIfCancellationRequested();
-
-                //    Progress(x =>
-                //    {
-                //        x.ProgressMessage = $"Executing step {i} of {num}";
-                //    });
-
-                //    await Task.Delay(1000, cancelToken);
-                //}
-                #endregion
 
                 // ===>>> Creates database
                 await db.Database.EnsureCreatedSchemalessAsync(cancelToken);
@@ -515,7 +505,7 @@ namespace Smartstore.Core.Installation
         {
             var curCulture = Thread.CurrentThread.CurrentUICulture;
 
-            if (language.Code.EqualsNoCase(curCulture.IetfLanguageTag))
+            if (language.Code.EqualsNoCase(curCulture.Name))
             {
                 return true;
             } 
@@ -523,7 +513,7 @@ namespace Smartstore.Core.Installation
             curCulture = curCulture.Parent;
             if (curCulture != null)
             {
-                return language.Code.EqualsNoCase(curCulture.IetfLanguageTag);
+                return language.Code.EqualsNoCase(curCulture.Name);
             }
 
             return false;

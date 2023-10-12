@@ -3,10 +3,51 @@ using Smartstore.Core.Localization;
 
 namespace Smartstore.Core.Seo
 {
+    public enum CanonicalHostNameRule
+    {
+        /// <summary>
+        /// Doesn't matter (as requested)
+        /// </summary>
+        NoRule,
+        /// <summary>
+        /// The www prefix is required (www.myshop.com is default host)
+        /// </summary>
+        RequireWww,
+        /// <summary>
+		/// The www prefix should be omitted (myshop.com is default host)
+        /// </summary>
+        OmitWww
+    }
+
+    /// <summary>
+    /// Rule to apply when an incoming URL does not match
+    /// the <see cref="SeoSettings.AppendTrailingSlashToUrls"/> setting.
+    /// </summary>
+    public enum TrailingSlashRule
+    {
+        /// <summary>
+        /// Allow the other variant.
+        /// </summary>
+        Allow,
+        /// <summary>
+        /// Redirect to other variant (301).
+        /// </summary>
+        Redirect,
+        /// <summary>
+        /// Disallow the other variant and redirect to homepage.
+        /// </summary>
+        RedirectToHome,
+        /// <summary>
+        /// Disallow the other variant and return 404.
+        /// </summary>
+        Disallow
+    }
+
     public class SeoSettings : ISettings
     {
         public static ISet<string> DefaultRobotDisallows { get; } = new HashSet<string>
         {
+            "/admin/",
             "/bin/",
             "/exchange/",
             "/customer/",
@@ -32,8 +73,8 @@ namespace Smartstore.Core.Seo
 
         public SeoSettings()
         {
-            ExtraRobotsDisallows = new List<string> { "/blog/tag/", "/blog/month/", "/producttags/" };
-            ExtraRobotsAllows = new List<string>();
+            ExtraRobotsDisallows = new();
+            ExtraRobotsAllows = new();
             SeoNameCharConversion = string.Join(Environment.NewLine, DefaultCharConversions);
         }
 
@@ -78,8 +119,14 @@ namespace Smartstore.Core.Seo
         public bool CanonicalUrlsEnabled { get; set; }
         public CanonicalHostNameRule CanonicalHostNameRule { get; set; } = CanonicalHostNameRule.NoRule;
 
+        //public bool LowercaseUrls { get; set; } = true;
+        //public bool LowercaseQueryStrings { get; set; }
+        public bool AppendTrailingSlashToUrls { get; set; } = true;
+        public TrailingSlashRule TrailingSlashRule { get; set; } = TrailingSlashRule.Allow;
+
         public List<string> ExtraRobotsDisallows { get; set; }
         public List<string> ExtraRobotsAllows { get; set; }
+        public string ExtraRobotsLines { get; set; }
 
         /// <summary>
         /// A value indicating whether to load all URL records and active slugs on application startup

@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.Net.Http.Headers;
+using Smartstore.Utilities;
 
 namespace Smartstore.Core.Seo.Routing
 {
@@ -32,7 +33,7 @@ namespace Smartstore.Core.Seo.Routing
                 }
                 else if (policy.IsModified)
                 {
-                    return HandleRedirect(policy.GetModifiedUrl());
+                    return HandleRedirect(policy);
                 }
                 
                 // We may need the original endpoint for logging and error handling purposes later,
@@ -57,17 +58,24 @@ namespace Smartstore.Core.Seo.Routing
                 }
                 else if (policy.IsModified)
                 {
-                    return HandleRedirect(policy.GetModifiedUrl());
+                    return HandleRedirect(policy);
                 }
             }
 
             // No redirection was requested. Continue.
             return _next(context);
 
-            Task HandleRedirect(string path)
+            Task HandleRedirect(UrlPolicy policy)
             {
-                context.Response.StatusCode = context.Connection.IsLocal() ? 302 : 301;
-                context.Response.Headers[HeaderNames.Location] = path;
+                var isPermanent = !CommonHelper.IsDevEnvironment;
+
+                context.Response.StatusCode = policy.Scheme.IsModified
+                    ? (isPermanent ? StatusCodes.Status301MovedPermanently : StatusCodes.Status302Found)
+                    // Use 307/308 for HTTPS redirection
+                    : (isPermanent ? StatusCodes.Status308PermanentRedirect : StatusCodes.Status307TemporaryRedirect);
+
+                context.Response.Headers[HeaderNames.Location] = policy.GetModifiedUrl();
+
                 return Task.CompletedTask;
             }
         }

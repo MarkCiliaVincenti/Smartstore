@@ -32,9 +32,13 @@ namespace Smartstore.Core.Content.Media
 
         private void Initialize(MediaFile file, string directory)
         {
+            Guard.NotNull(file);
+
             File = file;
             Directory = directory.EmptyNull();
-            Path = Directory.Length > 0 ? Directory + '/' + Name.UrlEncode() : Name.UrlEncode();
+
+            var encodedName = Name.IsEmpty() ? Name : Uri.EscapeDataString(Name);
+            Path = Directory.Length > 0 ? Directory + '/' + encodedName : encodedName;
 
             if (file.Width != null && file.Height != null)
             {

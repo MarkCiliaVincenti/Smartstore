@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Razor.TagHelpers;
-using Microsoft.AspNetCore.Routing;
 using Smartstore.Collections;
 using Smartstore.Web.Rendering;
 using Smartstore.Web.Rendering.Pager;
@@ -36,6 +35,7 @@ namespace Smartstore.Web.TagHelpers.Shared
         const string AlignmentAttributeName = "sm-alignment";
         const string SizeAttributeName = "sm-size";
         const string StyleAttributeName = "sm-style";
+        const string ShowNavLabelAttributeName = "sm-show-nav-label";
         const string ShowFirstAttributeName = "sm-show-first";
         const string ShowLastAttributeName = "sm-show-last";
         const string ShowNextAttributeName = "sm-show-next";
@@ -45,6 +45,7 @@ namespace Smartstore.Web.TagHelpers.Shared
         const string SkipActiveStateAttributeName = "sm-skip-active-state";
         const string ItemTitleFormatStringAttributeName = "sm-item-title-format-string";
         const string QueryParamNameAttributeName = "sm-query-param";
+        const string ContentClassNameAttribute = "sm-content-class";
 
         [HtmlAttributeName(ListItemsAttributeName)]
         public IPageable ListItems { get; set; }
@@ -57,6 +58,12 @@ namespace Smartstore.Web.TagHelpers.Shared
 
         [HtmlAttributeName(StyleAttributeName)]
         public PagerStyle Style { get; set; }
+
+        /// <summary>
+        /// Shows labels for the chevron buttons, but only on small devices (>= sm).
+        /// </summary>
+        [HtmlAttributeName(ShowNavLabelAttributeName)]
+        public bool ShowNavLabel { get; set; }
 
         [HtmlAttributeName(ShowFirstAttributeName)]
         public bool ShowFirst { get; set; } = false;
@@ -73,14 +80,20 @@ namespace Smartstore.Web.TagHelpers.Shared
         [HtmlAttributeName(ShowPaginatorAttributeName)]
         public bool ShowPaginator { get; set; } = true;
 
+        /// <summary>
+        /// The max number of pages to render. Odd values are recommended: 7, 9, 11 (default), 13, ...
+        /// </summary>
         [HtmlAttributeName(MaxPagesToDisplayAttributeName)]
-        public int MaxPagesToDisplay { get; set; } = 8;
+        public int MaxPagesToDisplay { get; set; } = 11; // First + ... + 3xp + CURRENT + 3xp + ... + Last = 11
 
         [HtmlAttributeName(SkipActiveStateAttributeName)]
         public bool SkipActiveState { get; set; }
 
         [HtmlAttributeName(ItemTitleFormatStringAttributeName)]
         public string ItemTitleFormatString { get; set; }
+
+        [HtmlAttributeName(ContentClassNameAttribute)]
+        public string ContentCssClass { get; set; }
 
         [HtmlAttributeName(QueryParamNameAttributeName)]
         public string QueryParamName { get; set; } = "page";
@@ -93,9 +106,15 @@ namespace Smartstore.Web.TagHelpers.Shared
                 return;
             }
 
+            if (QueryParamName.IsEmpty())
+            {
+                QueryParamName = "page";
+            }
+
             var items = CreateItemList();
 
             output.Attributes.Add("aria-label", "Page navigation");
+            output.AppendCssClass("pagination-container");
 
             var itemsUl = new TagBuilder("ul");
             itemsUl.AppendCssClass("pagination mb-0");
@@ -113,6 +132,10 @@ namespace Smartstore.Web.TagHelpers.Shared
             {
                 itemsUl.AppendCssClass("pagination-xs");
             }
+            else
+            {
+                itemsUl.AppendCssClass("pagination-md");
+            }
 
             // Alignment
             if (Alignment == PagerAlignment.Centered)
@@ -126,9 +149,15 @@ namespace Smartstore.Web.TagHelpers.Shared
                 output.AppendCssClass("text-right");
             }
 
+            if (ContentCssClass.HasValue())
+            {
+                itemsUl.AppendCssClass(ContentCssClass);
+            }
+
+            var itemsCount = items.Count;
             foreach (var item in items)
             {
-                AppendItem(itemsUl, item);
+                AppendItem(itemsUl, item, itemsCount);
             }
 
             output.TagName = "nav";
@@ -138,123 +167,262 @@ namespace Smartstore.Web.TagHelpers.Shared
         }
 
         /// <summary>
-        /// Creates complete item list by adding navigation items for.
+        /// Creates complete item list by adding navigation items.
         /// </summary>
-        /// <returns></returns>
-        protected List<PagerItem> CreateItemList()
+        protected virtual List<PagerItem> CreateItemList()
         {
             if (!ShowPaginator || ListItems.TotalPages <= 1)
-                return new List<PagerItem>();
-
-            var pageNumber = ListItems.PageNumber;
-            var pageCount = ListItems.TotalPages;
-
-            var results = new List<PagerItem>();
-
-            PagerItem item;
-
-            // First link.
-            if (ShowFirst /*&& pageNumber > 1*/)
             {
-                item = new PagerItem(T("Pager.First"), GenerateUrl(1), PagerItemType.FirstPage)
-                {
-                    State = (pageNumber > 1) ? PagerItemState.Normal : PagerItemState.Disabled
-                };
-                results.Add(item);
+                return new List<PagerItem>();
             }
 
-            // Previous link.
-            if (ShowPrevious /*&& pageNumber > 1*/)
+            var currentPage = ListItems.PageNumber;
+            var totalPages = ListItems.TotalPages;
+            var maxPages = Math.Max(5, MaxPagesToDisplay); // Cannot handle less than 5 items: First + ... + CURRENT + ... + Last
+
+            var items = new List<PagerItem>();
+
+            // First link
+            if (ShowFirst)
             {
-                item = new PagerItem(T("Pager.Previous"), GenerateUrl(pageNumber - 1), PagerItemType.PreviousPage)
+                items.Add(new PagerItem(1, T("Pager.First"), GenerateUrl(1), PagerItemType.FirstPage)
                 {
-                    State = (pageNumber > 1) ? PagerItemState.Normal : PagerItemState.Disabled
-                };
-                results.Add(item);
+                    State = (currentPage > 1) ? PagerItemState.Normal : PagerItemState.Disabled,
+                    DisplayBreakpointUp = maxPages > 0 ? "md" : null
+                });
+            }
+
+            // Previous link
+            if (ShowPrevious)
+            {
+                items.Add(new PagerItem(currentPage - 1, T("Pager.Previous"), GenerateUrl(currentPage - 1), PagerItemType.PreviousPage)
+                {
+                    State = (currentPage > 1) ? PagerItemState.Normal : PagerItemState.Disabled
+                });
             }
 
             // Add the page number items.
-            if (MaxPagesToDisplay > 0)
+            if (maxPages > 0)
             {
-                AddPageItemsList(results);
+                var numPages = Math.Min(totalPages, maxPages);
+                
+                // xl range
+                var (start, end) = CalculateItemRange(maxPages);
+
+                var hasStartGap = start > 1;
+                var hasEndGap = end < totalPages;
+
+                // <= lg range (max 9 items)
+                var (startLg, endLg) = numPages > 9 ? CalculateItemRange(9, hasStartGap, hasEndGap) : (start, end);
+
+                // <= sm range (max 7 items)
+                var (startSm, endSm) = numPages > 7 ? CalculateItemRange(7, hasStartGap, hasEndGap) : (startLg, endLg);
+
+                // xs range (max 5 items)
+                var (startXs, endXs) = numPages > 5 ? CalculateItemRange(5, hasStartGap, hasEndGap) : (startSm, endSm);
+
+                if (start > 1)
+                {
+                    // Display first page
+                    items.Add(new PagerItem(1, "1", GenerateUrl(1)));
+
+                    if (hasStartGap)
+                    {
+                        // Display a gap at the start if necessary
+                        items.Add(new PagerItem(start - 1, "...", GenerateUrl(start - 1), PagerItemType.Gap));
+                    }
+                }
+
+                for (int i = start; i <= end; i++)
+                {
+                    var displayBreakpointUp = (string)null;
+
+                    // Handle responsiveness..
+                    if (i != currentPage && i > 1 && i < totalPages)
+                    {
+                        // ...by hiding too distant pages. Current, first and last pages are always visible.
+                        if (i < startLg || i > endLg)
+                        {
+                            displayBreakpointUp = "xl";
+                        }
+                        else if (i < startSm || i > endSm)
+                        {
+                            displayBreakpointUp = "md";
+                        }
+                        else if (i < startXs || i > endXs)
+                        {
+                            displayBreakpointUp = "sm";
+                        }
+                    }
+
+                    var state = PagerItemState.Normal;
+                    if (!SkipActiveState && (i == currentPage || (currentPage <= 0 && i == 1)))
+                    {
+                        state = PagerItemState.Selected;
+                    }
+
+                    items.Add(new PagerItem(i, i.ToString(), GenerateUrl(i))
+                    {
+                        State = state,
+                        DisplayBreakpointUp = displayBreakpointUp
+                    });
+                }
+
+                if (hasEndGap)
+                {
+                    // Display a gap at the end if necessary
+                    items.Add(new PagerItem(end + 1, "...", GenerateUrl(end + 1), PagerItemType.Gap));
+
+                    if (end < totalPages - 2)
+                    {
+                        // Always display the last page if not already displayed
+                        items.Add(new PagerItem(totalPages, totalPages.ToString(), GenerateUrl(totalPages)));
+                    }
+                }
             }
 
             // Next link.
-            var hasNext = false;
-            if (ShowNext /*&& pageNumber < pageCount*/)
+            if (ShowNext)
             {
-                item = new PagerItem(T("Pager.Next"), GenerateUrl(pageNumber + 1), PagerItemType.NextPage)
+                items.Add(new PagerItem(currentPage + 1, T("Pager.Next"), GenerateUrl(currentPage + 1), PagerItemType.NextPage)
                 {
-                    State = (pageNumber == pageCount) ? PagerItemState.Disabled : PagerItemState.Normal
-                };
-                results.Add(item);
-                hasNext = true;
+                    State = (currentPage == totalPages) ? PagerItemState.Disabled : PagerItemState.Normal,
+                });
             }
 
             // Last link.
-            if (ShowLast /*&& pageNumber < pageCount*/)
+            if (ShowLast)
             {
-                item = new PagerItem(T("Pager.Last"), GenerateUrl(pageCount), PagerItemType.LastPage)
+                items.Add(new PagerItem(totalPages, T("Pager.Last"), GenerateUrl(totalPages), PagerItemType.LastPage)
                 {
-                    State = (pageNumber == pageCount) ? PagerItemState.Disabled : PagerItemState.Normal
-                };
-                if (Style == PagerStyle.Pagination || !hasNext)
-                {
-                    results.Add(item);
-                }
-                else
-                {
-                    // BlogStyle Last-Item is right-aligned, so shift left.
-                    results.Insert(results.Count - 1, item);
-                }
+                    State = (currentPage == totalPages) ? PagerItemState.Disabled : PagerItemState.Normal,
+                    DisplayBreakpointUp = maxPages > 0 ? "md" : null
+                });
             }
 
-            return results;
+            return items;
         }
 
         /// <summary>
-        /// Can be overridden in a custom renderer in order to apply a custom numbering sequence.
+        /// Calculates the start...end range.
         /// </summary>
-        /// <param name="items"></param>
-        protected virtual void AddPageItemsList(List<PagerItem> items)
+        private (int start, int end) CalculateItemRange(int maxPages, bool? hasStartGap = null, bool? hasEndGap = null)
         {
-            var pageNumber = ListItems.PageNumber;
-            var pageCount = ListItems.TotalPages;
+            var totalPages = ListItems.TotalPages;
+            var currentPage = ListItems.PageNumber;
+            var start = 1;
+            var end = totalPages;
 
-            int start = GetFirstPageIndex() + 1;
-            int end = GetLastPageIndex() + 1;
-
-            if (start > 3 && !ShowFirst)
+            if (totalPages > maxPages)
             {
-                items.Add(new PagerItem("1", GenerateUrl(1)));
-                items.Add(new PagerItem("...", "", PagerItemType.Text));
-            }
+                var middle = (int)Math.Ceiling(maxPages / 2d) - 1;
+                var below = (currentPage - middle);
+                var above = (currentPage + middle);
 
-            for (int i = start; i <= end; i++)
-            {
-                var item = new PagerItem(i.ToString(), GenerateUrl(i));
-                if (i == pageNumber && !SkipActiveState)
+                if (below < 2)
                 {
-                    item.State = PagerItemState.Selected;
+                    above = maxPages;
+                    below = 1;
                 }
-                items.Add(item);
+                else if (above > (totalPages - 2))
+                {
+                    above = totalPages;
+                    below = totalPages - maxPages + 1;
+                }
+
+                start = below;
+                end = above;
             }
 
-            if (end < (pageCount - 3) && !ShowLast)
+            // INFO: code can be shorter, but this way it is more readable
+            if (hasStartGap.HasValue)
             {
-                items.Add(new PagerItem("...", "", PagerItemType.Text));
-                items.Add(new PagerItem(pageCount.ToString(), GenerateUrl(pageCount)));
+                // A subsequent call to lower (< xl) tiers
+                if (hasStartGap == true)
+                {
+                    // The main tier has a gap (1 & ...). Offset by 2.
+                    start += 2;
+                }
+                else if (start > 1)
+                {
+                    // The main tier has no gap. Offset by 1, because of the first page that is also rendered.
+                    start++;
+                }
             }
+            else
+            {
+                // The main (xl) call
+                if (start > 1)
+                {
+                    // The main tier has a gap (1 & ...). Offset by 2.
+                    start += 2;
+                }
+            }
+
+            if (hasEndGap.HasValue)
+            {
+                // A subsequent call to lower (< xl) tiers
+                if (hasEndGap == true)
+                {
+                    // The main tier has a gap (... & LastPage). Offset by 2.
+                    end -= 2;
+                }
+                else if (end < totalPages)
+                {
+                    // The main tier has no gap. Offset by 1, because of the last page that is also rendered.
+                    end--;
+                }
+                else if (currentPage == start - 1)
+                {
+                    // The main tier has no gap, but the current page comes right before the start page.
+                    // Offset by 2 because the last AND current pages need to be rendered.
+                    end -= 2;
+                }
+            }
+            else
+            {
+                // The main (xl) call
+                if (end < totalPages)
+                {
+                    // The main tier has a gap (... & LastPage). Offset by 2.
+                    end -= 2;
+                }
+            }
+
+            return (start, end);
         }
 
         /// <summary>
         /// Creates li tag from <see cref="PagerItem"/> and appends it to ul tag.
         /// </summary>
-        protected virtual void AppendItem(TagBuilder itemsUl, PagerItem item)
+        protected virtual void AppendItem(TagBuilder itemsUl, PagerItem item, int itemsCount)
         {
             var itemLi = new TagBuilder("li");
 
             using var classList = itemLi.GetClassList();
+
+            classList.Add("page-item");
+
+            if (item.IsNavButton)
+            {
+                classList.Add("page-item-nav");
+                if (item.Type == PagerItemType.PreviousPage)
+                {
+                    classList.Add("prev", "back");
+                }
+                else if (item.Type == PagerItemType.FirstPage)
+                {
+                    classList.Add("first", "back");
+                }
+                else if (item.Type == PagerItemType.NextPage)
+                {
+                    classList.Add("next", "advance");
+                }
+                else if (item.Type == PagerItemType.LastPage)
+                {
+                    classList.Add("last", "advance");
+                }
+            }
 
             if (item.State == PagerItemState.Disabled)
             {
@@ -269,20 +437,29 @@ namespace Smartstore.Web.TagHelpers.Shared
             {
                 classList.Add("shrinked");
             }
-
-            if (Style == PagerStyle.Blog && item.IsNavButton)
+            else if (item.Type == PagerItemType.Gap)
             {
-                classList.Add((item.Type == PagerItemType.PreviousPage || item.Type == PagerItemType.FirstPage) ? "previous" : "next");
+                classList.Add("gap");
             }
 
-            classList.Add("page-item");
+            if (item.CssClass.HasValue())
+            {
+                classList.Add(item.CssClass.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+
+            var isResponsive = itemsCount >= 6;
+            if (isResponsive && item.DisplayBreakpointUp.HasValue())
+            {
+                classList.Add("d-none", $"d-{item.DisplayBreakpointUp}-inline-block");
+            }
 
             // Dispose here to write all collected classes into tag.
             classList.Dispose();
 
-            var innerAOrSpan = new TagBuilder(item.Type == PagerItemType.Page || item.IsNavButton ? "a" : "span");
+            var isClickable = item.Type is PagerItemType.Page or PagerItemType.Gap;
+            var innerAOrSpan = new TagBuilder(isClickable || item.IsNavButton ? "a" : "span");
 
-            if (item.Type == PagerItemType.Page || item.IsNavButton)
+            if (isClickable || item.IsNavButton)
             {
                 innerAOrSpan.Attributes.Add("href", item.Url);
 
@@ -341,54 +518,20 @@ namespace Smartstore.Web.TagHelpers.Shared
 
             if (item.IsNavButton)
             {
+                if (ShowNavLabel && item.Type is (PagerItemType.LastPage or PagerItemType.NextPage))
+                {
+                    innerAOrSpan.InnerHtml.AppendHtml($"<span class='nav-label d-sm-none'>{item.Text}</span>");
+                }
+                
                 innerAOrSpan.InnerHtml.AppendHtml(iconI);
+
+                if (ShowNavLabel && item.Type is (PagerItemType.FirstPage or PagerItemType.PreviousPage))
+                {
+                    innerAOrSpan.InnerHtml.AppendHtml($"<span class='nav-label d-sm-none'>{item.Text}</span>");
+                }
             }
 
             return innerAOrSpan;
-        }
-
-        /// <summary>
-        /// Gets first individual page index.
-        /// </summary>
-        /// <returns>Page index</returns>
-        protected virtual int GetFirstPageIndex()
-        {
-            if ((ListItems.TotalPages < MaxPagesToDisplay) || ((ListItems.PageIndex - (MaxPagesToDisplay / 2)) < 0))
-            {
-                return 0;
-            }
-
-            if ((ListItems.PageIndex + (MaxPagesToDisplay / 2)) >= ListItems.TotalPages)
-            {
-                return ListItems.TotalPages - MaxPagesToDisplay;
-            }
-
-            return ListItems.PageIndex - (MaxPagesToDisplay / 2);
-        }
-
-        /// <summary>
-        /// Get last individual page index.
-        /// </summary>
-        /// <returns>Page index</returns>
-        protected virtual int GetLastPageIndex()
-        {
-            int num = MaxPagesToDisplay / 2;
-            if ((MaxPagesToDisplay % 2) == 0)
-            {
-                num--;
-            }
-
-            if ((ListItems.TotalPages < MaxPagesToDisplay) || ((ListItems.PageIndex + num) >= ListItems.TotalPages))
-            {
-                return ListItems.TotalPages - 1;
-            }
-
-            if ((ListItems.PageIndex - (MaxPagesToDisplay / 2)) < 0)
-            {
-                return MaxPagesToDisplay - 1;
-            }
-
-            return ListItems.PageIndex + num;
         }
 
         /// <summary>
@@ -396,25 +539,18 @@ namespace Smartstore.Web.TagHelpers.Shared
         /// </summary>
         protected virtual string GenerateUrl(int pageNumber)
         {
-            var routeValues = ActionContextAccessor.ActionContext.RouteData.Values;
-            var newValues = new RouteValueDictionary(routeValues)
-            {
-                [QueryParamName.NullEmpty() ?? "page"] = pageNumber
-            };
+            var request = ViewContext.HttpContext.Request;
 
-            var query = ActionContextAccessor.ActionContext.HttpContext.Request.Query;
-            if (query != null && query.Count > 0)
-            {
-                foreach (var item in query)
-                {
-                    if (!newValues.Keys.Contains(item.Key))
-                    {
-                        newValues.Add(item.Key, item.Value);
-                    }
-                }
-            }
+            // Resolve current path without query
+            var path = request.PathBase + request.Path;
+            
+            // Merge page index param with current query
+            var queryPart = request.Query.Merge($"?{QueryParamName}={pageNumber}");
 
-            return UrlHelper.RouteUrl(newValues);
+            // Append modified query to path
+            var url = path.Add(queryPart);
+
+            return url;
         }
     }
 }

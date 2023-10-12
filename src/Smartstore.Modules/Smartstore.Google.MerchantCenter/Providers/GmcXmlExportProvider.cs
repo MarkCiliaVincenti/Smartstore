@@ -250,7 +250,7 @@ namespace Smartstore.Google.MerchantCenter.Providers
                             {
                                 availability = "out of stock";
                             }
-                            else if (entity.BackorderMode == BackorderMode.AllowQtyBelow0 || entity.BackorderMode == BackorderMode.AllowQtyBelow0AndNotifyCustomer)
+                            else if (entity.BackorderMode == BackorderMode.AllowQtyBelow0 || entity.BackorderMode == BackorderMode.AllowQtyBelow0OnBackorder)
                             {
                                 availability = entity.AvailableForPreOrder ? "preorder" : "out of stock";
                             }
@@ -367,6 +367,7 @@ namespace Smartstore.Google.MerchantCenter.Providers
 
                             if (BasePriceSupported(entity.BasePriceBaseAmount ?? 0, measureUnit))
                             {
+                                // INFO: GMC does not support more than 2 digits after a decimal.
                                 var basePriceMeasure = $"{(entity.BasePriceAmount ?? decimal.Zero).FormatInvariant()} {measureUnit}";
                                 var basePriceBaseMeasure = $"{entity.BasePriceBaseAmount ?? 1} {measureUnit}";
 

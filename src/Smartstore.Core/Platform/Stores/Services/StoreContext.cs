@@ -1,6 +1,5 @@
 ﻿using Autofac;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Smartstore.Caching;
 using Smartstore.Core.Common;
 using Smartstore.Core.Data;
@@ -18,7 +17,6 @@ namespace Smartstore.Core.Stores
         const string CacheKey = "stores:all";
 
         private readonly IComponentContext _scope;
-        private readonly IActionContextAccessor _actionContextAccessor;
         private readonly ICacheFactory _cacheFactory;
         private readonly IDbContextFactory<SmartDbContext> _dbContextFactory;
         private readonly IHttpContextAccessor _httpContextAccessor;
@@ -28,48 +26,26 @@ namespace Smartstore.Core.Stores
         public StoreContext(
             IHttpContextAccessor httpContextAccessor,
             ICacheFactory cacheFactory,
-            IDbContextFactory<SmartDbContext> dbContextFactory,
-            IActionContextAccessor actionContextAccessor)
+            IDbContextFactory<SmartDbContext> dbContextFactory)
         {
             _cacheFactory = cacheFactory;
             _dbContextFactory = dbContextFactory;
             _httpContextAccessor = httpContextAccessor;
-            _actionContextAccessor = actionContextAccessor;
         }
 
         internal StoreContext(
             IComponentContext scope,
             IHttpContextAccessor httpContextAccessor,
             ICacheFactory cacheFactory,
-            IDbContextFactory<SmartDbContext> dbContextFactory,
-            IActionContextAccessor actionContextAccessor)
+            IDbContextFactory<SmartDbContext> dbContextFactory)
         {
             _scope = scope;
             _cacheFactory = cacheFactory;
             _dbContextFactory = dbContextFactory;
             _httpContextAccessor = httpContextAccessor;
-            _actionContextAccessor = actionContextAccessor;
         }
 
         #region Hook
-
-        protected override HookResult OnDeleting(BaseEntity entity, IHookedEntity entry)
-        {
-            if (entry.Entity is Store)
-            {
-                if (GetCachedStores().Stores.Count == 1)
-                {
-                    entry.State = Smartstore.Data.EntityState.Unchanged;
-                    throw new InvalidOperationException("Cannot delete the only configured store.");
-                }
-
-                return HookResult.Ok;
-            }
-            else
-            {
-                return HookResult.Void;
-            }
-        }
 
         public override HookResult OnAfterSave(IHookedEntity entry)
         {
@@ -146,12 +122,19 @@ namespace Smartstore.Core.Stores
 
         public int? GetRequestStore()
         {
-            return _actionContextAccessor.ActionContext?.HttpContext?.GetItem<int?>(OverriddenStoreIdKey, forceCreation: false);
+            try
+            {
+                return _httpContextAccessor.HttpContext?.GetItem<int?>(OverriddenStoreIdKey, forceCreation: false);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public void SetRequestStore(int? storeId)
         {
-            var items = _actionContextAccessor.ActionContext?.HttpContext?.Items;
+            var items = _httpContextAccessor.HttpContext?.Items;
 
             if (items != null)
             {
@@ -170,10 +153,16 @@ namespace Smartstore.Core.Stores
 
         public int? GetPreviewStore()
         {
-            var previewCookie = _httpContextAccessor.HttpContext?.RequestServices?.GetService<IPreviewModeCookie>();
-            if (previewCookie != null)
+            try
             {
-                return previewCookie.GetOverride(OverriddenStoreIdKey)?.ToString()?.Convert<int?>();
+                var previewCookie = _httpContextAccessor.HttpContext?.RequestServices?.GetService<IPreviewModeCookie>();
+                if (previewCookie != null)
+                {
+                    return previewCookie.GetOverride(OverriddenStoreIdKey)?.ToString()?.Convert<int?>();
+                }
+            }
+            catch
+            {
             }
 
             return null;

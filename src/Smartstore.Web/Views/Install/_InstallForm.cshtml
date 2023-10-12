@@ -211,6 +211,25 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Collation -->
+                            <div id="CollationPanel">
+                                <div class="form-group row">
+                                    <div class="col-md-9 offset-md-3">
+                                        <div class="form-check mb-2">
+                                            <input type="checkbox" asp-for="UseCustomCollation" class="form-check-input remember" />
+                                            <label class="form-check-label" asp-for="UseCustomCollation">@T("CustomCollation")</label>
+                                        </div>
+                                        <div id="CollationInnerPanel" style="display: none">
+                                            <input asp-for="Collation" class="form-control remember" />
+                                            <span asp-validation-for="Collation"></span>
+                                            <small class="form-text text-muted mt-2">
+                                                @Html.Raw(T("CustomCollation.Hint"))
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </fieldset>
 
@@ -292,6 +311,9 @@
         var authType = $('#DbAuthType');
         var userId = $('#DbUserId');
         var password = $('#DbPassword');
+        var useCustomCollation = $('#UseCustomCollation');
+        var collationPanel = $('#CollationPanel');
+        var collationInnerPanel = $('#CollationInnerPanel');
 
         function hide(el, thenShow, callback) {
             $(el).slideUp(300, "ease-in-out", function () {
@@ -315,6 +337,7 @@
 
             authGroup.toggle(!isSqlite);
             dbServerCol.toggle(!isSqlite);
+            collationPanel.toggle(!isSqlite);
             authTypeCol.toggle(isSqlServer);
 
             if (isSqlServer) {
@@ -326,6 +349,13 @@
                 userId.removeAttr("disabled");
                 password.removeAttr("disabled");
             }
+
+            if (isSqlite) {
+                useCustomCollation.prop("checked", false);
+                $('#Collation').val(null);
+            }
+
+            $('#CollationInfoLink').attr("href", getCollationInfoUrl(selectedProvider));
 
             rawConStringHelp.find('> [data-for-provider]').each(function () {
                 let helpFor = $(this).data('for-provider');
@@ -355,9 +385,29 @@
             }
         }
 
+        function toggleCollation() {
+            collationInnerPanel.toggle(useCustomCollation.is(':checked'));
+        }
+
+        function getCollationInfoUrl(provider) {
+            switch (provider) {
+                case 'mysql':
+                    return 'https://dev.mysql.com/doc/refman/8.0/en/charset-general.html';
+                case 'sqlserver':
+                    return 'https://learn.microsoft.com/en-us/sql/relational-databases/collations/collation-and-unicode-support';
+                case 'postgresql':
+                    return 'https://www.postgresql.org/docs/current/collation.html';
+                case 'sqlite':
+                    return 'https://www.sqlite.org/datatype3.html#collation';
+                default:
+                    return '#';
+            }
+        }
+
         dataProvider.on('change', toggleDataProvider).trigger('change');
         useRawConString.on('change', toggleConnectionInfo).trigger('change');
         authType.on('change', toggleAuthType).trigger('change');
+        useCustomCollation.on('change', toggleCollation).trigger('change');
 
         $('#restart-install').on('click', function (e) { 
             e.preventDefault();

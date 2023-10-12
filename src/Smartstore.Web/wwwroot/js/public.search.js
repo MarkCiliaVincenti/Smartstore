@@ -6,19 +6,27 @@
 
     $(function () {
         $('form.instasearch-form').each(function () {
-            var form = $(this),
+            let form = $(this),
                 box = form.find('.instasearch-term'),
-                spinner = $('#instasearch-progress');
+                addon = form.find('.instasearch-addon'),
+                spinner = form.find('.instasearch-progress'),
+                clearer = form.find('.instasearch-clear');
 
             if (box.length == 0 || box.data('instasearch') === false)
                 return;
 
-            var drop = form.find('.instasearch-drop'),
+            let drop = form.find('.instasearch-drop'),
                 logo = $('.shop-logo'),
                 dropBody = drop.find('.instasearch-drop-body'),
                 minLength = box.data("minlength"),
                 url = box.data("url"),
                 keyNav = null;
+
+            clearer.on('click', function (e) {
+                box[0].value = '';
+                doSearch('');
+                box[0].focus();
+            });
 
             box.parent().on('click', function (e) {
                 e.stopPropagation();
@@ -69,10 +77,15 @@
                 }
 
                 if (spinner.length === 0) {
-                    spinner = createCircularSpinner(20).attr('id', 'instasearch-progress').appendTo(box.parent());
+                    spinner = createCircularSpinner(20)
+                        .addClass('instasearch-progress')
+                        .prependTo(addon);
                 }
                 // Don't show spinner when result is coming fast (< 100 ms.)
-                var spinnerTimeout = setTimeout(function () { spinner.addClass('active'); }, 100)
+                var spinnerTimeout = setTimeout(function () {
+                    spinner.addClass('active');
+                    box.addClass('busy');
+                }, 100)
 
                 // save last entered term in a global variable
                 lastTerm = term;
@@ -108,15 +121,17 @@
                     complete: function () {
                         clearTimeout(spinnerTimeout); 
                         spinner.removeClass('active');
+                        box.removeClass('busy');
                     }
                 });
             }
 
             function expandBox() {
+                box.addClass('active');
                 if (box.data('origin') === 'Search/Search') {
                     var logoWidth = logo.width();
                     $('body').addClass('search-focused');
-                    logo.css('margin-left', (logoWidth * -1) + 'px');
+                    logo.css('margin-inline-start', (logoWidth * -1) + 'px');
 
                     if (dropBody.text().length > 0) {
                         logo.one(Prefixer.event.transitionEnd, function () {
@@ -127,9 +142,10 @@
             }
 
             function shrinkBox() {
+                box.removeClass('active');
                 if (box.data('origin') === 'Search/Search') {
                     $('body').removeClass('search-focused');
-                    logo.css('margin-left', '');
+                    logo.css('margin-inline-start', '');
                 }
             }
 
@@ -223,7 +239,7 @@
             widget.on('click', ':input[type=radio].facet-control-native', facetControlClickHandler);
 
             function facetControlClickHandler(e) {
-                var href = $(this).closest('[data-href]').data('href');
+                let href = $(this).closest('[data-href]').data('href');
                 if (href) {
                     setLocation(href);
                 }
@@ -236,9 +252,9 @@
                     minVal = cnt.find('.facet-range-from').val(),
                     maxVal = cnt.find('.facet-range-to').val();
 
-                var expr = minVal.replace(/[^\d\.\-]/g, '') + '~' + maxVal.replace(/[^\d\.\-]/g, '');
+                let expr = minVal.replace(/[^\d\.\-]/g, '') + '~' + maxVal.replace(/[^\d\.\-]/g, '');
 
-                var url = modifyUrl(null, btn.data('qname'), expr.length > 1 ? expr : null);
+                let url = modifyUrl(null, btn.data('qname'), expr.length > 1 ? expr : null);
                 setLocation(url);
             });
 
@@ -247,7 +263,7 @@
                 if (recursive)
                     return;
 
-                var select = $(this),
+                let select = $(this),
                     isMin = select.hasClass('facet-range-from'),
                     otherSelect = select.closest('.facet-range-container').find('select.facet-range-' + (isMin ? 'to' : 'from')),
                     idx = select.find('option:selected').index(),
@@ -273,7 +289,7 @@
                 if (recursive)
                     return;
 
-                var select = $(this),
+                let select = $(this),
                     selectedUrl = null,
                     toUpper = select.val() === 'upper',
                     qname = select.data('qname');
@@ -311,15 +327,15 @@
         // =============================================
         (function () {
             widget.on('input propertychange paste', '.facet-local-search-input', function (e) {
-                var el = $(this);
+                let el = $(this);
 
                 // Retrieve the input field text and reset the count to zero
-                var filter = el.val(),
+                let filter = el.val(),
                     rg = new RegExp(filter, "i");
 
                 // Loop through the facet items
                 el.closest('.facet-body').find('.facet-item').each(function () {
-                    var item = $(this);
+                    let item = $(this);
 
                     // If the facet item does not contain the text phrase hide it
                     if (filter.length > 0 && item.text().search(rg) < 0) {
@@ -348,27 +364,35 @@
                 if (btn.data('offcanvas')) return;
 
                 // create offcanvas wrapper
-                var placement = Smartstore.globalization.culture.isRTL ? 'right' : 'left';
-                var offcanvas = $('<aside class="offcanvas offcanvas-' + placement + ' offcanvas-overlay" data-overlay="true"><div class="offcanvas-content offcanvas-scrollable"></div></aside>').appendTo('body');
+                let placement = viewport.is('>=md') ? 'start' : 'bottom';
+                let offcanvas =
+                    $(`<aside class="offcanvas offcanvas-${placement} offcanvas-shadow offcanvas-lg offcanvas-rounded" data-overlay="true">
+                            <div class="offcanvas-header">
+                                <h5 class="offcanvas-title"><i class="fa fa-sliders-h mr-2"></i><span>${btn.data("title")}</span></h5>
+                                <button type="button" class="btn-close" data-dismiss="offcanvas"></button>
+                            </div>
+                            <div class="offcanvas-content offcanvas-scrollable"></div>
+                       </aside>`).appendTo('body');
 
                 // handle .offcanvas-closer click
-                offcanvas.one('click', '.offcanvas-closer', function (e) {
+                offcanvas.one('click', '.btn-close', function (e) {
                     offcanvas.offcanvas('hide');
                 });
 
                 // put widget into offcanvas wrapper
-                widget.appendTo(offcanvas.children().first());
+                widget.appendTo(offcanvas.find('> .offcanvas-content'));
 
                 btn.data('offcanvas', offcanvas)
                     .attr('data-toggle', 'offcanvas')
-                    .attr('data-placement', placement)
                     .attr('data-disablescrolling', 'true')
+                    .data('placement', { xs: "bottom", md: "start" })
                     .data('target', offcanvas);
 
                 if (!afterResize) {
-                    // Collapse all groups on initial page load
-                    widget.find('.facet-toggle:not(.collapsed)').addClass('collapsed');
-                    widget.find('.facet-body.show').removeClass('show');
+                    //// Collapse all groups on initial page load
+                    //// TODO: (mc) Why did we do this? I don't like it anymore, so no auto-collapsing on mobile anymore (for now).
+                    //widget.find('.facet-toggle:not(.collapsed)').addClass('collapsed');
+                    //widget.find('.facet-body.show').removeClass('show');
                 }
             }
 
@@ -376,7 +400,7 @@
                 if (!btn.data('offcanvas')) return;
 
                 // move widget back to its origin
-                var offcanvas = btn.data('offcanvas');
+                let offcanvas = btn.data('offcanvas');
                 widget.appendTo($('.faceted-search-container'));
                 offcanvas.remove();
 
@@ -388,7 +412,7 @@
             }
 
             function toggleOffCanvas(afterResize) {
-                var breakpoint = '<lg';
+                let breakpoint = '<lg';
                 if (viewport.is(breakpoint)) {
                     collapseWidget(afterResize);
                 }

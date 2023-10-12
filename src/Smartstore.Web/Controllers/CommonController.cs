@@ -102,11 +102,10 @@ namespace Smartstore.Web.Controllers
 
             var disallowPaths = SeoSettings.DefaultRobotDisallows;
             var localizableDisallowPaths = _routeHelper.EnumerateDisallowedRobotPaths();
-            //var localizableDisallowPaths = SeoSettings.DefaultRobotLocalizableDisallows;
 
             #endregion
 
-            var sitemapUrl = WebHelper.GetAbsoluteUrl(Url.Content("sitemap.xml"), Request, true, Services.StoreContext.CurrentStore.ForceSslForAllPages ? "https" : "http");
+            var sitemapUrl = WebHelper.GetAbsoluteUrl(Url.Content("sitemap.xml"), Request, true, Services.StoreContext.CurrentStore.SupportsHttps() ? "https" : "http");
             using var psb = StringBuilderPool.Instance.Get(out var sb);
             sb.Append("User-agent: *");
             sb.AppendLine();
@@ -139,6 +138,12 @@ namespace Smartstore.Web.Controllers
 
             AddRobotsLines(sb, disallows, false);
             AddRobotsLines(sb, _seoSettings.ExtraRobotsAllows.Select(x => x.Trim()), true);
+
+            // Append custom lines
+            if (_seoSettings.ExtraRobotsLines.HasValue())
+            {
+                sb.Append(_seoSettings.ExtraRobotsLines);
+            }
 
             return Content(sb.ToString(), "text/plain");
         }
@@ -182,10 +187,12 @@ namespace Smartstore.Web.Controllers
         public async Task<IActionResult> CurrencySelected(int customerCurrency, string returnUrl = null)
         {
             var currency = await _db.Currencies.FindByIdAsync(customerCurrency);
-            if (currency != null)
+            if (currency == null || !currency.Published)
             {
-                Services.WorkContext.WorkingCurrency = currency;
+                return NotFound();
             }
+
+            Services.WorkContext.WorkingCurrency = currency;
 
             return RedirectToReferrer(returnUrl);
         }
@@ -195,15 +202,17 @@ namespace Smartstore.Web.Controllers
         public async Task<IActionResult> SetLanguage(int langid, string returnUrl = "")
         {
             var language = await _db.Languages.FindByIdAsync(langid, false);
-            if (language != null && language.Published)
+            if (language == null || !language.Published)
             {
-                Services.WorkContext.WorkingLanguage = language;
+                return NotFound();
             }
+
+            Services.WorkContext.WorkingLanguage = language;
 
             var helper = new LocalizedUrlHelper(Request.PathBase, returnUrl ?? string.Empty);
             var urlPolicy = HttpContext.GetUrlPolicy();
 
-            if (urlPolicy.LocalizationSettings.SeoFriendlyUrlsForLanguagesEnabled)
+            if (urlPolicy != null && urlPolicy.LocalizationSettings.SeoFriendlyUrlsForLanguagesEnabled)
             {
                 // Don't prepend culture code if it is master language and master is prefixless by configuration.
                 if (language.UniqueSeoCode != urlPolicy.DefaultCultureCode || urlPolicy.LocalizationSettings.DefaultLanguageRedirectBehaviour == DefaultLanguageRedirectBehaviour.PrependSeoCodeAndRedirect)

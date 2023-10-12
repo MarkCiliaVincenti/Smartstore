@@ -531,7 +531,6 @@ namespace Smartstore.Core.Checkout.Orders
         /// <summary>
         /// Gets or sets discount usage history
         /// </summary>
-        [IgnoreDataMember]
         public ICollection<DiscountUsageHistory> DiscountUsageHistory
         {
             get => _discountUsageHistory ?? LazyLoader.Load(this, ref _discountUsageHistory) ?? (_discountUsageHistory ??= new HashSet<DiscountUsageHistory>());
@@ -542,7 +541,6 @@ namespace Smartstore.Core.Checkout.Orders
         /// <summary>
         /// Gets or sets gift card usage history (gift card that were used with this order)
         /// </summary>
-        [IgnoreDataMember]
         public ICollection<GiftCardUsageHistory> GiftCardUsageHistory
         {
             get => _giftCardUsageHistory ?? LazyLoader.Load(this, ref _giftCardUsageHistory) ?? (_giftCardUsageHistory ??= new HashSet<GiftCardUsageHistory>());

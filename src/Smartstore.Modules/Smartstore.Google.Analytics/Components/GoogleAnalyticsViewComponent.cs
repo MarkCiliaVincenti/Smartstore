@@ -40,6 +40,12 @@ namespace Smartstore.Google.Analytics.Components
                 return Empty();
             }
 
+            // If user has not accepted the cookie consent don't render anything.
+            if (_settings.RenderWithUserConsentOnly && !await _cookieConsentManager.IsCookieAllowedAsync(CookieType.Analytics))
+            {
+                return Empty();
+            }
+
             var rootScript = string.Empty;
             var specificScript = string.Empty;
 
@@ -144,7 +150,7 @@ namespace Smartstore.Google.Analytics.Components
                     }
                 }
 
-                var cookiesAllowed = _cookieConsentManager.IsCookieAllowed(CookieType.Analytics);
+                var cookiesAllowed = await _cookieConsentManager.IsCookieAllowedAsync(CookieType.Analytics);
 
                 rootScript = _googleAnalyticsScriptHelper.GetTrackingScript(cookiesAllowed)
                     .Replace("{ECOMMERCE}", specificScript);

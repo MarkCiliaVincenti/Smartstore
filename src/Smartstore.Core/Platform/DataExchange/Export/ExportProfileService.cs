@@ -17,8 +17,8 @@ namespace Smartstore.Core.DataExchange.Export
 {
     public partial class ExportProfileService : AsyncDbSaveHook<ExportProfile>, IExportProfileService
     {
-        private const string FILE_NAME_PATTERN = "%Store.Id%-%Profile.Id%-%File.Index%-%Profile.SeoName%";
-        private const string EXPORT_FILE_ROOT = "ExportProfiles";
+        const string FileNamePattern = "%Store.Id%-%Profile.Id%-%File.Index%-%Profile.SeoName%";
+        const string ExportFileRoot = "ExportProfiles";
 
         private static readonly Regex _regexFolderName = new(".*/ExportProfiles/?", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
@@ -58,26 +58,26 @@ namespace Smartstore.Core.DataExchange.Export
         protected override Task<HookResult> OnUpdatingAsync(ExportProfile entity, IHookedEntity entry, CancellationToken cancelToken)
         {
             // INFO: validation of 'FolderName' not necessary anymore. Contains only the name of the export folder (no more path information).
-            if (entity.FolderName.HasValue() && entity.FolderName[0] == '~')
+            if (entity.FolderName.HasValue())
             {
-                // Map legacy folder names. Examples:
-                // ~/App_Data/ExportProfiles/smartstorecategorycsv
-                // ~/App_Data/Tenants/Default/ExportProfiles/smartstoreshoppingcartitemcsv
-                var newFolderName = _regexFolderName.Replace(PathUtility.NormalizeRelativePath(entity.FolderName).TrimEnd('/'), string.Empty);
+                string newFolderName = null;
 
-                if (newFolderName.IsEmpty())
+                if (entity.FolderName[0] == '~')
                 {
-                    // Profile folder is root folder '~/App_Data/ExportProfiles/'.
-                    var cleanedProviderName = entity.ProviderSystemName
-                        .Replace("Exports.", string.Empty)
-                        .Replace("Feeds.", string.Empty)
-                        .Replace("/", string.Empty)
-                        .Replace("-", string.Empty);
+                    // Map legacy folder names. Examples:
+                    // ~/App_Data/ExportProfiles/smartstorecategorycsv
+                    // ~/App_Data/Tenants/Default/ExportProfiles/smartstoreshoppingcartitemcsv
+                    newFolderName = _regexFolderName.Replace(PathUtility.NormalizeRelativePath(entity.FolderName).TrimEnd('/'), string.Empty);
 
-                    var folderName = SlugUtility.Slugify(cleanedProviderName, true, false, false)
-                        .Truncate(_dataExchangeSettings.MaxFileNameLength);
-
-                    newFolderName = _appContext.TenantRoot.CreateUniqueDirectoryName(EXPORT_FILE_ROOT, folderName);
+                    if (newFolderName.IsEmpty())
+                    {
+                        // Profile folder is root folder '~/App_Data/ExportProfiles/'.
+                        newFolderName = CreateUniqueDirectoryName(entity);
+                    }
+                }
+                else if (PathUtility.IsAbsolutePhysicalPath(entity.FolderName))
+                {
+                    newFolderName = CreateUniqueDirectoryName(entity);
                 }
 
                 if (newFolderName.HasValue())
@@ -89,18 +89,32 @@ namespace Smartstore.Core.DataExchange.Export
             return Task.FromResult(HookResult.Ok);
         }
 
+        private string CreateUniqueDirectoryName(ExportProfile profile)
+        {
+            var cleanedProviderName = profile.ProviderSystemName
+                .Replace("Exports.", string.Empty)
+                .Replace("Feeds.", string.Empty)
+                .Replace("/", string.Empty)
+                .Replace("-", string.Empty);
+
+            var folderName = SlugUtility.Slugify(cleanedProviderName, true, false, false)
+                .Truncate(_dataExchangeSettings.MaxFileNameLength);
+
+            return _appContext.TenantRoot.CreateUniqueDirectoryName(ExportFileRoot, folderName);
+        }
+
         #endregion
 
         public virtual async Task<IDirectory> GetExportDirectoryAsync(ExportProfile profile, string subpath = null, bool createIfNotExists = false)
         {
-            Guard.NotNull(profile, nameof(profile));
-            Guard.IsTrue(profile.FolderName.EmptyNull().Length > 2, nameof(profile.FolderName), "The export folder name must be at least 3 characters long.");
+            Guard.NotNull(profile);
+            Guard.IsTrue(profile.FolderName.EmptyNull().Length > 2, message: "The export folder name must be at least 3 characters long.");
 
             // Legacy examples:
             // ~/App_Data/ExportProfiles/smartstorecategorycsv
             // ~/App_Data/Tenants/Default/ExportProfiles/smartstoreshoppingcartitemcsv
             var root = _appContext.TenantRoot;
-            var path = PathUtility.Join(EXPORT_FILE_ROOT, _regexFolderName.Replace(profile.FolderName, string.Empty), subpath.EmptyNull());
+            var path = PathUtility.Join(ExportFileRoot, _regexFolderName.Replace(profile.FolderName, string.Empty), subpath.EmptyNull());
             var dir = await root.GetDirectoryAsync(path);
 
             if (createIfNotExists)
@@ -189,7 +203,7 @@ namespace Smartstore.Core.DataExchange.Export
                 // so that IIS application path can be prepended if applicable. 
                 var path = WebHelper.ToAppRelativePath(PathUtility.Join(DataExporter.PublicDirectoryName, deployment.SubFolder));
 
-                return store.Url.TrimEnd('/') + _urlHelper.Value.Content(path).EnsureEndsWith('/');
+                return store.GetAbsoluteUrl(_urlHelper.Value.Content(path).EnsureEndsWith('/'));
             }
 
             return null;
@@ -228,7 +242,7 @@ namespace Smartstore.Core.DataExchange.Export
             string profileSystemName = null,
             int cloneFromProfileId = 0)
         {
-            Guard.NotEmpty(providerSystemName, nameof(providerSystemName));
+            Guard.NotEmpty(providerSystemName);
 
             if (name.IsEmpty())
             {
@@ -273,7 +287,7 @@ namespace Smartstore.Core.DataExchange.Export
             {
                 profile = new ExportProfile
                 {
-                    FileNamePattern = FILE_NAME_PATTERN
+                    FileNamePattern = FileNamePattern
                 };
 
                 if (isSystemProfile)
@@ -326,7 +340,8 @@ namespace Smartstore.Core.DataExchange.Export
             var folderName = SlugUtility.Slugify(cleanedProviderName, true, false, false)
                 .Truncate(_dataExchangeSettings.MaxFileNameLength);
 
-            profile.FolderName = _appContext.TenantRoot.CreateUniqueDirectoryName(EXPORT_FILE_ROOT, folderName);
+            profile.FolderName = _appContext.TenantRoot.CreateUniqueDirectoryName(ExportFileRoot, folderName);
+
             profile.SystemName = profileSystemName.IsEmpty() && isSystemProfile
                 ? cleanedProviderName
                 : profileSystemName;
@@ -338,37 +353,56 @@ namespace Smartstore.Core.DataExchange.Export
 
             task.Alias = profile.Id.ToString();
 
-            if (fileExtension.HasValue() && !isSystemProfile)
+            try
             {
-                if (cloneProfile == null)
-                {
-                    if (features.HasFlag(ExportFeatures.CreatesInitialPublicDeployment))
-                    {
-                        var webRoot = _appContext.WebRoot;
-                        var subfolder = webRoot.CreateUniqueDirectoryName(DataExporter.PublicDirectoryName, folderName);
-                        _ = await webRoot.TryCreateDirectoryAsync(PathUtility.Join(DataExporter.PublicDirectoryName, subfolder));
+                _ = await _appContext.TenantRoot.TryCreateDirectoryAsync(PathUtility.Join(ExportFileRoot, profile.FolderName));
 
-                        profile.Deployments.Add(new ExportDeployment
+                if (fileExtension.HasValue() && !isSystemProfile)
+                {
+                    if (cloneProfile == null)
+                    {
+                        if (features.HasFlag(ExportFeatures.CreatesInitialPublicDeployment))
                         {
-                            ProfileId = profile.Id,
-                            Enabled = true,
-                            DeploymentType = ExportDeploymentType.PublicFolder,
-                            Name = profile.Name,
-                            SubFolder = subfolder
-                        });
+                            profile.Deployments.Add(new ExportDeployment
+                            {
+                                ProfileId = profile.Id,
+                                Enabled = true,
+                                DeploymentType = ExportDeploymentType.PublicFolder,
+                                Name = profile.Name,
+                                SubFolder = await CreateUniquePublicDirectory(folderName)
+                            });
+                        }
+                    }
+                    else
+                    {
+                        foreach (var deployment in cloneProfile.Deployments)
+                        {
+                            var clone = deployment.Clone();
+                            if (deployment.DeploymentType == ExportDeploymentType.PublicFolder)
+                            {
+                                clone.SubFolder = await CreateUniquePublicDirectory(folderName);
+                            }
+                            profile.Deployments.Add(clone);
+                        }
                     }
                 }
-                else
-                {
-                    cloneProfile.Deployments.Each(x => profile.Deployments.Add(x.Clone()));
-                }
+            }
+            finally
+            {
+                // Finally update task and export profile.
+                await _taskStore.UpdateTaskAsync(task);
+                await _db.SaveChangesAsync();
             }
 
-            // Finally update task and export profile.
-            await _taskStore.UpdateTaskAsync(task);
-            await _db.SaveChangesAsync();
-
             return profile;
+
+            async Task<string> CreateUniquePublicDirectory(string defaultName)
+            {
+                var webRoot = _appContext.WebRoot;
+                var uniqueName = webRoot.CreateUniqueDirectoryName(DataExporter.PublicDirectoryName, defaultName);
+                _ = await webRoot.TryCreateDirectoryAsync(PathUtility.Join(DataExporter.PublicDirectoryName, uniqueName));
+                return uniqueName;
+            }
         }
 
         public virtual async Task DeleteExportProfileAsync(ExportProfile profile, bool force = false)
@@ -427,7 +461,7 @@ namespace Smartstore.Core.DataExchange.Export
             var directories = new List<IDirectory>
             {
                 await webRoot.GetDirectoryAsync(DataExporter.PublicDirectoryName),
-                await tenantRoot.GetDirectoryAsync(EXPORT_FILE_ROOT)
+                await tenantRoot.GetDirectoryAsync(ExportFileRoot)
             };
 
             foreach (var dir in directories.Where(x => x.Exists))

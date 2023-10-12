@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using Autofac;
+using Microsoft.AspNetCore.Http;
 using Smartstore.Caching.Tasks;
 using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Catalog.Brands;
@@ -103,15 +104,19 @@ namespace Smartstore.Core.Installation
         {
             var imgCompanyLogo = _db.MediaFiles.Where(x => x.Name == "company-logo.png").FirstOrDefault();
             var currency = _db.Currencies.FirstOrDefault(x => x.CurrencyCode == "EUR") ?? _db.Currencies.First();
+            var httpRequest = _appContext.Services.Resolve<IHttpContextAccessor>().HttpContext?.Request;
+            var url = httpRequest == null
+                ? "http://www.yourstore.com/"
+                : httpRequest.Scheme + "://" + httpRequest.Host + httpRequest.PathBase.Value.EnsureEndsWith('/');
 
             var entities = new List<Store>
             {
                 new Store
                 {
                     Name = "Your store name",
-                    Url = "http://www.yourStore.com/",
+                    Url = url,
+                    SslEnabled = httpRequest?.IsHttps ?? false,
                     Hosts = "yourstore.com,www.yourstore.com",
-                    SslEnabled = false,
                     DisplayOrder = 1,
                     LogoMediaFileId = imgCompanyLogo?.Id ?? 0,
                     DefaultCurrencyId = currency.Id,
@@ -274,18 +279,18 @@ namespace Smartstore.Core.Installation
         {
             var entities = new List<Currency>()
             {
-                CreateCurrency("en-US", published: true, rate: 1M, order: 0),
-                CreateCurrency("en-GB", published: true, rate: 0.61M, order: 5),
-                CreateCurrency("en-AU", published: false, rate: 0.94M, order: 10),
-                CreateCurrency("en-CA", published: false, rate: 0.98M, order: 15),
-                CreateCurrency("de-DE", published: true, rate: 0.79M, order: 20/*, formatting: string.Format("0.00 {0}", "\u20ac")*/),
-                CreateCurrency("de-CH", published: true, rate: 0.93M, order: 25, formatting: "CHF #,##0.00"),
-                CreateCurrency("zh-CN", published: false, rate: 6.48M, order: 30),
-                CreateCurrency("zh-HK", rate: 7.75M, order: 35),
-                CreateCurrency("ja-JP", rate: 80.07M, order: 40),
-                CreateCurrency("ru-RU", rate: 27.7M, order: 45),
-                CreateCurrency("tr-TR", rate: 1.78M, order: 50),
-                CreateCurrency("sv-SE", rate: 6.19M, order: 55)
+                CreateCurrency("en-US", 1M, true, 0),
+                CreateCurrency("en-GB", 0.787M, true, 5),
+                CreateCurrency("en-AU", 1.497M, false, 10),
+                CreateCurrency("en-CA", 1.315M, false, 15),
+                CreateCurrency("de-DE", 0.916M, true, 20),
+                CreateCurrency("de-CH", 0.892M, true, 25, "CHF #,##0.00"),
+                CreateCurrency("zh-CN", 7.233M, false, 30),
+                CreateCurrency("zh-HK", 7.829M, false, 35),
+                CreateCurrency("ja-JP", 143.259M, false, 40),
+                CreateCurrency("ru-RU", 85.33M, false, 45),
+                CreateCurrency("tr-TR", 25.903M, false, 50),
+                CreateCurrency("sv-SE", 10.7M, false, 55)
             };
 
             Alter(entities);
@@ -408,7 +413,7 @@ namespace Smartstore.Core.Installation
                 AdminComment = "Built-in system guest record used for requests from search engines.",
                 Active = true,
                 IsSystemAccount = true,
-                SystemName = SystemCustomerNames.SearchEngine,
+                SystemName = SystemCustomerNames.Bot,
                 CreatedOnUtc = DateTime.UtcNow,
                 LastActivityDateUtc = DateTime.UtcNow,
             };
@@ -603,7 +608,7 @@ namespace Smartstore.Core.Installation
         {
             var typeScanner = EngineContext.Current.Application.TypeScanner;
             var settings = typeScanner.FindTypes<ISettings>()
-                .Select(x => Activator.CreateInstance(x))
+                .Select(Activator.CreateInstance)
                 .OfType<ISettings>()
                 .ToList();
 
@@ -614,8 +619,8 @@ namespace Smartstore.Core.Installation
                 localizationSettings.DefaultAdminLanguageId = defaultLanguageId;
             }
 
-            var defaultDimensionId = _db.MeasureDimensions.FirstOrDefault(x => x.SystemKeyword == "inch")?.Id ?? 0;
-            var defaultWeightId = _db.MeasureWeights.FirstOrDefault(x => x.SystemKeyword == "lb")?.Id ?? 0;
+            var defaultDimensionId = _db.MeasureDimensions.OrderBy(x => x.Id).FirstOrDefault(x => x.SystemKeyword == "inch")?.Id ?? 0;
+            var defaultWeightId = _db.MeasureWeights.OrderBy(x => x.Id).FirstOrDefault(x => x.SystemKeyword == "lb")?.Id ?? 0;
             var measureSettings = settings.OfType<MeasureSettings>().FirstOrDefault();
             if (measureSettings != null)
             {
@@ -635,7 +640,7 @@ namespace Smartstore.Core.Installation
                 };
             }
 
-            var defaultEmailAccountId = _db.EmailAccounts.FirstOrDefault()?.Id ?? 0;
+            var defaultEmailAccountId = _db.EmailAccounts.OrderBy(x => x.Id).FirstOrDefault()?.Id ?? 0;
             var emailAccountSettings = settings.OfType<EmailAccountSettings>().FirstOrDefault();
             if (emailAccountSettings != null)
             {
@@ -645,7 +650,7 @@ namespace Smartstore.Core.Installation
             var currencySettings = settings.OfType<CurrencySettings>().FirstOrDefault();
             if (currencySettings != null)
             {
-                var currency = _db.Currencies.FirstOrDefault(x => x.CurrencyCode == "EUR") ?? _db.Currencies.First();
+                var currency = _db.Currencies.OrderBy(x => x.Id).FirstOrDefault(x => x.CurrencyCode == "EUR") ?? _db.Currencies.First();
                 if (currency != null)
                 {
                     currencySettings.PrimaryCurrencyId = currency.Id;
@@ -659,8 +664,8 @@ namespace Smartstore.Core.Installation
                 priceSettings.OfferBadgeLabel = "Deal";
                 priceSettings.LimitedOfferBadgeLabel = "Limited time deal";
 
-                var msrpPriceLabel = _db.PriceLabels.FirstOrDefault(x => x.IsRetailPrice) ?? _db.PriceLabels.First();
-                var lowestPriceLabel = _db.PriceLabels.FirstOrDefault(x => x.ShortName == "Lowest" || x.ShortName == "Niedrigster") ?? _db.PriceLabels.First();
+                var msrpPriceLabel = _db.PriceLabels.OrderBy(x => x.Id).FirstOrDefault(x => x.IsRetailPrice) ?? _db.PriceLabels.First();
+                var lowestPriceLabel = _db.PriceLabels.OrderBy(x => x.Id).FirstOrDefault(x => x.ShortName == "Lowest" || x.ShortName == "Niedrigster") ?? _db.PriceLabels.First();
 
                 priceSettings.DefaultComparePriceLabelId = msrpPriceLabel.Id;
                 priceSettings.DefaultRegularPriceLabelId = lowestPriceLabel.Id;
@@ -1385,10 +1390,7 @@ namespace Smartstore.Core.Installation
             string seName = null,
             int displayOrder = 1)
         {
-            if (seName == null)
-            {
-                seName = BuildSlug(Path.GetFileNameWithoutExtension(imageName));
-            }
+            seName ??= BuildSlug(Path.GetFileNameWithoutExtension(imageName));
 
             var picture = CreatePicture(imageName, seName);
             if (picture != null)
@@ -1404,21 +1406,25 @@ namespace Smartstore.Core.Installation
         protected string BuildSlug(string name)
             => SlugUtility.Slugify(name, _slugifyOptions);
 
-        protected static Currency CreateCurrency(string locale, decimal rate = 1M, string formatting = "", bool published = false, int order = 1)
+        protected static Currency CreateCurrency(
+            string locale, 
+            decimal rate = 1M, 
+            bool published = false, 
+            int order = 1,
+            string formatting = null)
         {
-            Currency currency = null;
             try
             {
                 var info = new RegionInfo(locale);
                 if (info != null)
                 {
-                    currency = new Currency
+                    return new()
                     {
                         DisplayLocale = locale,
-                        Name = info.CurrencyNativeName,
+                        Name = info.CurrencyEnglishName,
                         CurrencyCode = info.ISOCurrencySymbol,
                         Rate = rate,
-                        CustomFormatting = formatting,
+                        CustomFormatting = formatting.EmptyNull(),
                         Published = published,
                         DisplayOrder = order
                     };
@@ -1426,24 +1432,52 @@ namespace Smartstore.Core.Installation
             }
             catch
             {
-                return null;
             }
 
-            return currency;
+            return null;
         }
 
-        protected static string FormatAttributeJson(List<(int Attribute, object Value)> Attributes)
+        protected static ProductVariantAttributeCombination CreateAttributeCombination(
+            Product product,
+            string sku,
+            List<ProductAttributeSample> attributes,
+            MediaFile file = null,
+            bool isActive = true,
+            int stockQuantity = 10000,
+            decimal? price = null,
+            string mediaFileIds = null)
         {
             var selection = new ProductVariantAttributeSelection(string.Empty);
-
-            foreach (var attribute in Attributes)
+            foreach (var attribute in attributes)
             {
-                selection.AddAttribute(attribute.Attribute, new List<object> { attribute.Value });
+                selection.AddAttribute(attribute.AttributeId, new List<object> { attribute.Value });
             }
 
-            return selection.AsJson();
+            return new ProductVariantAttributeCombination
+            {
+                Product = product,
+                Sku = sku,
+                RawAttributes = selection.AsJson(),
+                StockQuantity = stockQuantity,
+                AllowOutOfStockOrders = true,
+                IsActive = isActive,
+                Price = price,
+                AssignedMediaFileIds = mediaFileIds ?? file?.Id.ToString()
+            };
         }
 
         #endregion
+
+        public class ProductAttributeSample
+        {
+            public ProductAttributeSample(int attributeId, object value)
+            {
+                AttributeId = attributeId;
+                Value = value;
+            }
+
+            public int AttributeId { get; }
+            public object Value { get; }
+        }
     }
 }

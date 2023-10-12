@@ -60,14 +60,14 @@ namespace Smartstore.StripeElements.Filters
                 return;
             }
 
-            var checkoutState = _checkoutStateAccessor.CheckoutState.GetCustomState<StripeCheckoutState>();
-            var skipPaymentPage = checkoutState.ButtonUsed;
             var customer = _services.WorkContext.CurrentCustomer;
-
             var action = filterContext.RouteData.Values.GetActionName();
 
             if (action.EqualsNoCase(nameof(CheckoutController.PaymentMethod)))
             {
+                var checkoutState = _checkoutStateAccessor.CheckoutState.GetCustomState<StripeCheckoutState>();
+                var skipPaymentPage = checkoutState.ButtonUsed;
+
                 // Should only run on a full view rendering result or HTML ContentResult.
                 if ((filterContext.Result is StatusCodeResult || filterContext.Result.IsHtmlViewResult()) && skipPaymentPage)
                 {
@@ -91,14 +91,13 @@ namespace Smartstore.StripeElements.Filters
                     filterContext.Result = new RedirectToActionResult(nameof(CheckoutController.Confirm), "Checkout", new { area = string.Empty });
                 }
             }
-
-            if (action.EqualsNoCase(nameof(CheckoutController.Confirm)))
+            else if (action.EqualsNoCase(nameof(CheckoutController.Confirm)))
             {
                 if (customer.GenericAttributes.SelectedPaymentMethod.EqualsNoCase(StripeElementsProvider.SystemName))
                 {
                     var state = _checkoutStateAccessor.CheckoutState;
 
-                    if (state.IsPaymentRequired && await _stripeHelper.IsStripeElementsActive())
+                    if (state.IsPaymentRequired)
                     {
                         _widgetProvider.RegisterWidget("end",
                             new PartialViewWidget("_CheckoutConfirm", state.GetCustomState<StripeCheckoutState>(), "Smartstore.Stripe"));

@@ -16,7 +16,7 @@ namespace Smartstore.Core.Rules
         public virtual async Task<bool> ApplyRuleSetMappingsAsync<T>(T entity, int[] selectedRuleSetIds)
             where T : BaseEntity, IRulesContainer
         {
-            Guard.NotNull(entity, nameof(entity));
+            Guard.NotNull(entity);
 
             selectedRuleSetIds ??= Array.Empty<int>();
 
@@ -57,7 +57,9 @@ namespace Smartstore.Core.Rules
         public async Task<IRuleExpressionGroup> CreateExpressionGroupAsync(int ruleSetId, IRuleVisitor visitor, bool includeHidden = false)
         {
             if (ruleSetId <= 0)
+            {
                 return null;
+            } 
 
             // TODO: prevent stack overflow > check if nested groups reference each other.
 

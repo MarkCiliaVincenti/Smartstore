@@ -24,7 +24,9 @@ namespace Smartstore.Core.Messaging
 
         protected override async Task<HookResult> OnDeletingAsync(EmailAccount entity, IHookedEntity entry, CancellationToken cancelToken)
         {
-            if (entity.Id == _emailAccountSettings.DefaultEmailAccountId)
+            var settingName = nameof(EmailAccountSettings) + '.' + nameof(EmailAccountSettings.DefaultEmailAccountId);
+
+            if (await _db.Settings.AnyAsync(x => x.Name == settingName && x.Value == entity.Id.ToString(), cancelToken))
             {
                 entry.ResetState();
                 _hookErrorMessage = T("Admin.Configuration.EmailAccounts.CannotDeleteDefaultAccount", entity.Email.NaIfEmpty());
@@ -37,6 +39,9 @@ namespace Smartstore.Core.Messaging
 
             return HookResult.Ok;
         }
+
+        protected override Task<HookResult> OnDeletedAsync(EmailAccount entity, IHookedEntity entry, CancellationToken cancelToken)
+            => Task.FromResult(HookResult.Ok);
 
         public override Task OnBeforeSaveCompletedAsync(IEnumerable<IHookedEntity> entries, CancellationToken cancelToken)
         {
@@ -51,21 +56,29 @@ namespace Smartstore.Core.Messaging
             return Task.CompletedTask;
         }
 
+        public override async Task OnAfterSaveCompletedAsync(IEnumerable<IHookedEntity> entries, CancellationToken cancelToken)
+        {
+            var deletedAccountIds = entries
+                .Where(x => x.InitialState == EntityState.Deleted)
+                .Select(x => x.Entity)
+                .OfType<EmailAccount>()
+                .Select(x => x.Id)
+                .ToList();
+
+            if (deletedAccountIds.Count > 0)
+            {
+                await _db.MessageTemplates
+                    .Where(x => deletedAccountIds.Contains(x.EmailAccountId))
+                    .ExecuteUpdateAsync(x => x.SetProperty(p => p.EmailAccountId, p => _emailAccountSettings.DefaultEmailAccountId), cancelToken);
+            }
+        }
+
         #endregion
 
         public virtual EmailAccount GetDefaultEmailAccount()
         {
-            var defaultEmailAccount = _db.EmailAccounts
-                .FindById(_emailAccountSettings.DefaultEmailAccountId);
-
-            if (defaultEmailAccount == null)
-            {
-                defaultEmailAccount = _db.EmailAccounts
-                    .AsNoTracking()
-                    .FirstOrDefault();
-            }
-
-            return defaultEmailAccount;
+            return _db.EmailAccounts.FindById(_emailAccountSettings.DefaultEmailAccountId, false)
+                ?? _db.EmailAccounts.AsNoTracking().OrderBy(x => x.Id).FirstOrDefault();
         }
     }
 }

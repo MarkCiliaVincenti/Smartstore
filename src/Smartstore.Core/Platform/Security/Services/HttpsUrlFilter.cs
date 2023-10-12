@@ -2,7 +2,7 @@
 using Smartstore.Core.Seo;
 using Smartstore.Core.Seo.Routing;
 using Smartstore.Core.Stores;
-using Smartstore.Core.Web;
+using Smartstore.Utilities;
 
 namespace Smartstore.Core.Security
 {
@@ -11,17 +11,10 @@ namespace Smartstore.Core.Security
     /// </summary>
     public class HttpsUrlFilter : IUrlFilter
     {
+        public ILogger Logger { get; set; } = NullLogger.Instance;
+
         public void Apply(UrlPolicy policy, HttpContext httpContext)
         {
-            // Don't redirect on localhost if not allowed.
-            if (httpContext.Connection.IsLocal())
-            {
-                if (!httpContext.RequestServices.GetService<SecuritySettings>().UseSslOnLocalhost)
-                {
-                    return;
-                }
-            }
-
             // Only redirect for GET requests, otherwise the browser might not propagate
             // the verb and request body correctly.
             if (!httpContext.Request.IsGet())
@@ -29,27 +22,38 @@ namespace Smartstore.Core.Security
                 return;
             }
 
-            var currentConnectionSecured = httpContext.RequestServices.GetService<IWebHelper>().IsCurrentConnectionSecured();
+            var isHttps = httpContext.Request.IsHttps;
             var currentStore = httpContext.RequestServices.GetService<IStoreContext>().CurrentStore;
             var supportsHttps = currentStore.SupportsHttps();
-            var requireHttps = currentStore.ForceSslForAllPages;
+            var shouldRedirect = supportsHttps && !isHttps;
 
-            if (policy.Endpoint != null && supportsHttps && !requireHttps)
+            if (!shouldRedirect)
             {
-                // Check if RequireSslAttribute is present in endpoint metadata
-                requireHttps = policy.Endpoint.Metadata.GetMetadata<RequireSslAttribute>() != null;
+                return;
             }
 
-            requireHttps = requireHttps && supportsHttps;
+            // Don't redirect in dev environment.
+            if (CommonHelper.IsDevEnvironment)
+            {
+                Logger.Debug("Redirection to HTTPS suppressed. Reason: Dev environment.");
+                return;
+            }
 
-            if (requireHttps && !currentConnectionSecured)
+            // Don't redirect on localhost if not allowed.
+            if (httpContext.Connection.IsLocal())
             {
-                policy.Scheme.Modify(Uri.UriSchemeHttps);
+                if (!httpContext.RequestServices.GetService<SecuritySettings>().UseSslOnLocalhost)
+                {
+                    Logger.Debug("Redirection to HTTPS suppressed. Reason: Local connection.");
+                    return;
+                }
             }
-            else if (!requireHttps && currentConnectionSecured)
-            {
-                policy.Scheme.Modify(Uri.UriSchemeHttp);
-            }
+
+            var uri = currentStore.GetBaseUri();
+            policy.Scheme.Modify(uri.Scheme);
+            policy.Host.Modify(uri.Authority);
+
+            // TBD: Don't redirect from HTTPS to HTTP
         }
     }
 }

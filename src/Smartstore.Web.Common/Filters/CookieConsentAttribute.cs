@@ -38,7 +38,7 @@ namespace Smartstore.Core.Identity
 
             private bool IsProcessableRequest(ActionExecutingContext context)
             {
-                if (!_privacySettings.EnableCookieConsent)
+                if (_privacySettings.CookieConsentRequirement == CookieConsentRequirement.NeverRequired)
                     return false;
 
                 var request = context.HttpContext?.Request;
@@ -91,7 +91,7 @@ namespace Smartstore.Core.Identity
                     }
                     else
                     {
-                        if (_userAgent.IsBot)
+                        if (_userAgent.IsBot())
                         {
                             // Don't ask consent from search engines, also don't set cookies.
                             _cookieConsentManager.SetConsentCookie(true, true);

@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.OData;
+using Smartstore.Core.Checkout.Cart;
 using Smartstore.Core.Checkout.Orders;
 using Smartstore.Core.Identity;
 
@@ -11,10 +12,14 @@ namespace Smartstore.Web.Api.Controllers
     public class CustomersController : WebApiController<Customer>
     {
         private readonly Lazy<UserManager<Customer>> _userManager;
+        private readonly Lazy<CustomerSettings> _customerSettings;
 
-        public CustomersController(Lazy<UserManager<Customer>> userManager)
+        public CustomersController(
+            Lazy<UserManager<Customer>> userManager,
+            Lazy<CustomerSettings> customerSettings)
         {
             _userManager = userManager;
+            _customerSettings = customerSettings;
         }
 
         [HttpGet("Customers"), ApiQueryable]
@@ -73,6 +78,13 @@ namespace Smartstore.Web.Api.Controllers
             return GetRelatedQuery(key, x => x.CustomerRoleMappings);
         }
 
+        [HttpGet("Customers({key})/ShoppingCartItems"), ApiQueryable]
+        [Permission(Permissions.Cart.Read)]
+        public IQueryable<ShoppingCartItem> GetShoppingCartItems(int key)
+        {
+            return GetRelatedQuery(key, x => x.ShoppingCartItems);
+        }
+
         [HttpGet("Customers({key})/RewardPointsHistory"), ApiQueryable]
         [Permission(Permissions.Order.Read)]
         public IQueryable<RewardPointsHistory> GetRewardPointsHistory(int key)
@@ -94,6 +106,12 @@ namespace Smartstore.Web.Api.Controllers
             }
 
             model = await ApplyRelatedEntityIdsAsync(model);
+            model.PasswordFormat = _customerSettings.Value.DefaultPasswordFormat;
+
+            if (model.CustomerGuid == Guid.Empty)
+            {
+                model.CustomerGuid = Guid.NewGuid();
+            }
 
             var result = await _userManager.Value.CreateAsync(model);
             if (result.Succeeded)

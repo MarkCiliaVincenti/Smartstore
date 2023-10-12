@@ -5,12 +5,8 @@ namespace Smartstore.Core.Widgets
 {
     public class DefaultWidgetSelector : IWidgetSelector
     {
-        private readonly static Dictionary<string, string> _legacyWidgetNameMap = new()
-        {
-            { "body_start_html_tag_after", "start" },
-            { "body_end_html_tag_before", "end" },
-            { "head_html_tag", "start" }
-        };
+        private readonly static string[] StartAliases = new[] { "body_start_html_tag_after", "head_html_tag" };
+        private readonly static string[] EndAliases = new[] { "body_end_html_tag_before" };
 
         private readonly IWidgetSource[] _widgetSources;
         private readonly IHttpContextAccessor _httpContextAccessor;
@@ -23,15 +19,11 @@ namespace Smartstore.Core.Widgets
 
         public async Task<IEnumerable<Widget>> GetWidgetsAsync(string zone, object model = null)
         {
-            Guard.NotEmpty(zone, nameof(zone));
-
-            if (_legacyWidgetNameMap.ContainsKey(zone))
-            {
-                zone = _legacyWidgetNameMap[zone];
-            }
+            Guard.NotEmpty(zone);
 
             var httpContext = _httpContextAccessor.HttpContext;
             var isPublicArea = httpContext != null && httpContext.GetRouteData().Values.GetAreaName().IsEmpty();
+            var zoneAliases = GetZoneAliases(zone);
             var widgets = Enumerable.Empty<Widget>();
 
             for (var i = 0; i < _widgetSources.Length; i++)
@@ -40,6 +32,18 @@ namespace Smartstore.Core.Widgets
                 if (localWidgets != null)
                 {
                     widgets = widgets.Concat(localWidgets);
+                }
+
+                if (zoneAliases != null)
+                {
+                    for (var y = 0; y < zoneAliases.Length; y++)
+                    {
+                        var legacyWidgets = await _widgetSources[i].GetWidgetsAsync(zoneAliases[y], isPublicArea, model);
+                        if (legacyWidgets != null)
+                        {
+                            widgets = widgets.Concat(legacyWidgets);
+                        }
+                    }
                 }
             }
 
@@ -52,6 +56,19 @@ namespace Smartstore.Core.Widgets
             }
 
             return widgets;
+        }
+
+        /// <summary>
+        /// For legacy widget name mapping.
+        /// </summary>
+        private static string[] GetZoneAliases(string zone)
+        {
+            return zone switch
+            {
+                "start" => StartAliases,
+                "end"   => EndAliases,
+                _       => null
+            };
         }
     }
 }

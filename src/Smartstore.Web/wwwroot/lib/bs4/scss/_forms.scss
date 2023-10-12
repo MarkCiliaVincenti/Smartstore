@@ -1,3 +1,7 @@
+/// <reference path="_variables.scss" />
+/// <reference path="_functions.scss" />
+/// <reference path="_mixins.scss" />
+
 // stylelint-disable selector-no-qualifying-type
 
 //
@@ -9,7 +13,9 @@
   width: 100%;
   height: $input-height;
   padding: $input-padding-y $input-padding-x;
-  font-size: $font-size-base;
+  font-family: $input-font-family;
+  @include font-size($input-font-size);
+  font-weight: $input-font-weight;
   line-height: $input-line-height;
   color: $input-color;
   background-color: $input-bg;
@@ -17,13 +23,7 @@
   border: $input-border-width solid $input-border-color;
 
   // Note: This has no effect on <select>s in some browsers, due to the limited stylability of `<select>`s in CSS.
-  @if $enable-rounded {
-    // Manually use the if/else instead of the mixin to account for iOS override
-    border-radius: $input-border-radius;
-  } @else {
-    // Otherwise undo the iOS default
-    border-radius: 0;
-  }
+  @include border-radius($input-border-radius, 0);
 
   @include box-shadow($input-box-shadow);
   @include transition($input-transition);
@@ -35,7 +35,7 @@
   }
 
   // Customize the `:focus` state to imitate native WebKit styles.
-  @include form-control-focus();
+  @include form-control-focus($ignore-warning: true);
 
   // Placeholder
   &::placeholder {
@@ -57,7 +57,22 @@
   }
 }
 
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="month"] {
+  &.form-control {
+    appearance: none; // Fix appearance for date inputs in Safari
+  }
+}
+
 select.form-control {
+  // Remove select outline from select box in FF
+  &:-moz-focusring {
+    color: transparent;
+    text-shadow: 0 0 0 $input-color;
+  }
+
   &:focus::-ms-value {
     // Suppress the nested default white text on blue background highlight given to
     // the selected option text when the (still closed) <select> receives focus
@@ -66,6 +81,15 @@ select.form-control {
     // See https://github.com/twbs/bootstrap/issues/19398.
     color: $input-color;
     background-color: $input-bg;
+  }
+
+  &:not([multiple], [size]:not([size="1"])) {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 16px 12px;
+    padding-right: 2.25rem;
   }
 }
 
@@ -84,24 +108,24 @@ select.form-control {
 // For use with horizontal and inline forms, when you need the label (or legend)
 // text to align with the form controls.
 .col-form-label {
-  padding-top: calc(#{$input-padding-y} + #{$input-border-width});
-  padding-bottom: calc(#{$input-padding-y} + #{$input-border-width});
+  padding-top: add($input-padding-y, $input-border-width);
+  padding-bottom: add($input-padding-y, $input-border-width);
   margin-bottom: 0; // Override the `<label>/<legend>` default
-  font-size: inherit; // Override the `<legend>` default
+  @include font-size(inherit); // Override the `<legend>` default
   line-height: $input-line-height;
 }
 
 .col-form-label-lg {
-  padding-top: calc(#{$input-padding-y-lg} + #{$input-border-width});
-  padding-bottom: calc(#{$input-padding-y-lg} + #{$input-border-width});
-  font-size: $font-size-lg;
+  padding-top: add($input-padding-y-lg, $input-border-width);
+  padding-bottom: add($input-padding-y-lg, $input-border-width);
+  @include font-size($input-font-size-lg);
   line-height: $input-line-height-lg;
 }
 
 .col-form-label-sm {
-  padding-top: calc(#{$input-padding-y-sm} + #{$input-border-width});
-  padding-bottom: calc(#{$input-padding-y-sm} + #{$input-border-width});
-  font-size: $font-size-sm;
+  padding-top: add($input-padding-y-sm, $input-border-width);
+  padding-bottom: add($input-padding-y-sm, $input-border-width);
+  @include font-size($input-font-size-sm);
   line-height: $input-line-height-sm;
 }
 
@@ -114,9 +138,9 @@ select.form-control {
 .form-control-plaintext {
   display: block;
   width: 100%;
-  padding-top: $input-padding-y;
-  padding-bottom: $input-padding-y;
+  padding: $input-padding-y 0;
   margin-bottom: 0; // match inputs if this class comes on inputs with default margins
+  @include font-size($input-font-size);
   line-height: $input-line-height;
   color: $input-plaintext-color;
   background-color: transparent;
@@ -141,7 +165,7 @@ select.form-control {
 .form-control-sm {
   height: $input-height-sm;
   padding: $input-padding-y-sm $input-padding-x-sm;
-  font-size: $font-size-sm;
+  @include font-size($input-font-size-sm);
   line-height: $input-line-height-sm;
   @include border-radius($input-border-radius-sm);
 }
@@ -149,12 +173,12 @@ select.form-control {
 .form-control-lg {
   height: $input-height-lg;
   padding: $input-padding-y-lg $input-padding-x-lg;
-  font-size: $font-size-lg;
+  @include font-size($input-font-size-lg);
   line-height: $input-line-height-lg;
   @include border-radius($input-border-radius-lg);
 }
 
-// stylelint-disable no-duplicate-selectors
+// stylelint-disable-next-line no-duplicate-selectors
 select.form-control {
   &[size],
   &[multiple] {
@@ -165,7 +189,6 @@ select.form-control {
 textarea.form-control {
   height: auto;
 }
-// stylelint-enable no-duplicate-selectors
 
 // Form groups
 //
@@ -189,13 +212,13 @@ textarea.form-control {
 .form-row {
   display: flex;
   flex-wrap: wrap;
-  margin-right: -5px;
-  margin-left: -5px;
+  margin-right: -$form-grid-gutter-width * .5;
+  margin-left: -$form-grid-gutter-width * .5;
 
   > .col,
   > [class*="col-"] {
-    padding-right: 5px;
-    padding-left: 5px;
+    padding-right: $form-grid-gutter-width * .5;
+    padding-left: $form-grid-gutter-width * .5;
   }
 }
 
@@ -207,35 +230,154 @@ textarea.form-control {
 .form-check {
   position: relative;
   display: block;
-  padding-left: $form-check-input-gutter;
+  min-height: $form-check-min-height;
+  padding-inline-start: $form-check-padding-start;
+  margin-bottom: $form-check-margin-bottom;
+
+  .form-check-input {
+      float: left;
+      margin-inline-start: $form-check-padding-start * -1;
+  }
+}
+
+.form-check-reverse {
+  padding-inline-end: $form-check-padding-start;
+  padding-inline-start: 0;
+  text-align: end;
+
+  .form-check-input {
+    float: right;
+    margin-inline-end: $form-check-padding-start * -1;
+    margin-inline-start: 0;
+  }
 }
 
 .form-check-input {
-  position: absolute;
-  margin-top: $form-check-input-margin-y;
-  margin-left: -$form-check-input-gutter;
+  --form-check-bg: #{$form-check-input-bg};
+  --form-check-size: #{cssmax(1rem, $form-check-input-width)};
+  --form-check-checked-bg-rgb: #{to-rgb($form-check-input-checked-bg-color)};
 
-  &:disabled ~ .form-check-label {
-    color: $text-muted;
+  width: var(--form-check-size);
+  height: var(--form-check-size);
+  margin-top: #{calc((#{$line-height-base} * 1em - var(--form-check-size)) * 0.5)}; // ($line-height-base - $form-check-input-width) * .5; // line-height minus check height
+  vertical-align: top;
+  appearance: none;
+  background-color: var(--form-check-bg);
+  background-image: var(--form-check-bg-image);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  border: $form-check-input-border;
+  print-color-adjust: exact; // Keep themed appearance for print
+  @include transition($form-check-transition);
+
+  &[type="checkbox"] {
+    @include border-radius($form-check-input-border-radius);
+  }
+
+  &[type="radio"] {
+    // stylelint-disable-next-line property-disallowed-list
+    border-radius: $form-check-radio-border-radius;
+  }
+
+  &:active {
+    filter: $form-check-input-active-filter;
+  }
+
+  &:focus {
+    border-color: $form-check-input-focus-border;
+    outline: 0;
+    box-shadow: $form-check-input-focus-box-shadow;
+  }
+
+  &:checked {
+    background-color: rgba(var(--form-check-checked-bg-rgb), 1);
+    border-color: rgba(var(--form-check-checked-bg-rgb), 1);
+
+    &[type="checkbox"] {
+      --form-check-bg-image: #{escape-svg($form-check-input-checked-bg-image)};
+    }
+
+    &[type="radio"] {
+      --form-check-bg-image: #{escape-svg($form-check-radio-checked-bg-image)};
+    }
+  }
+
+  &[type="checkbox"]:indeterminate {
+    background-color: $form-check-input-indeterminate-bg-color;
+    border-color: $form-check-input-indeterminate-border-color;
+    --form-check-bg-image: #{escape-svg($form-check-input-indeterminate-bg-image)};
+  }
+
+  &:disabled {
+    pointer-events: none;
+    filter: none;
+    opacity: $form-check-input-disabled-opacity;
+  }
+
+  // Use disabled attribute in addition of :disabled pseudo-class
+  // See: https://github.com/twbs/bootstrap/issues/28247
+  &[disabled],
+  &:disabled {
+    ~ .form-check-label {
+      cursor: default;
+      opacity: $form-check-label-disabled-opacity;
+    }
   }
 }
 
 .form-check-label {
+  color: $form-check-label-color;
+  cursor: $form-check-label-cursor;
   margin-bottom: 0; // Override default `<label>` bottom margin
 }
 
 .form-check-inline {
-  display: inline-flex;
-  align-items: center;
-  padding-left: 0; // Override base .form-check
-  margin-right: $form-check-inline-margin-x;
+  display: inline-block;
+  margin-right: $form-check-inline-margin-end;
+}
 
-  // Undo .form-check-input defaults and add some `margin-right`.
+
+//
+// Switch
+//
+
+.form-switch {
+  --form-switch-width: #{cssmax(2rem, $form-switch-width)};
+  --form-switch-offset: calc(var(--form-switch-width) + 0.75em);
+
+  padding-inline-start: var(--form-switch-offset);
+
   .form-check-input {
-    position: static;
-    margin-top: 0;
-    margin-right: $form-check-inline-input-margin-x;
-    margin-left: 0;
+    --form-check-size: calc(var(--form-switch-width) / 2);
+    --form-switch-bg: #{escape-svg($form-switch-bg-image)};
+
+    width: var(--form-switch-width);
+    height: calc(var(--form-switch-width) / 2);
+    margin-inline-start: calc(var(--form-switch-offset) * -1);
+    background-image: var(--form-switch-bg);
+    background-position: left center;
+    @include border-radius($form-switch-border-radius);
+    @include transition($form-switch-transition);
+
+    &:focus {
+      --form-switch-bg: #{escape-svg($form-switch-focus-bg-image)};
+    }
+
+    &:checked {
+      background-position: $form-switch-checked-bg-position;
+      --form-switch-bg: #{escape-svg($form-switch-checked-bg-image)};
+    }
+  }
+
+  &.form-check-reverse {
+    padding-inline-end: var(--form-switch-offset);
+    padding-inline-start: 0;
+
+    .form-check-input {
+      margin-inline-end: calc(var(--form-switch-offset) * -1);
+      margin-inline-start: 0;
+    }
   }
 }
 
@@ -247,8 +389,9 @@ textarea.form-control {
 // pseudo-classes but also includes `.is-invalid` and `.is-valid` classes for
 // server side validation.
 
-@include form-validation-state("valid", $form-feedback-valid-color);
-@include form-validation-state("invalid", $form-feedback-invalid-color);
+@each $state, $data in $form-validation-states {
+  @include form-validation-state($state, map-get($data, color), map-get($data, icon));
+}
 
 // Inline forms
 //
@@ -317,8 +460,9 @@ textarea.form-control {
     }
     .form-check-input {
       position: relative;
+      flex-shrink: 0;
       margin-top: 0;
-      margin-right: $form-check-input-margin-x;
+      //margin-right: $form-check-input-margin-x;
       margin-left: 0;
     }
 

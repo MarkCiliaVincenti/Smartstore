@@ -36,14 +36,13 @@
     {
         public LanguageDownloadContext(int setId)
         {
-            Guard.NotZero(setId, nameof(setId));
-
+            Guard.NotZero(setId);
             SetId = setId;
         }
 
         public int SetId { get; }
         public CheckAvailableResourcesResult AvailableResources { get; set; }
         public string StoreUrl { get; set; }
-        public Dictionary<string, string> StringResouces { get; set; }
+        public Dictionary<string, string> StringResources { get; set; }
     }
 }

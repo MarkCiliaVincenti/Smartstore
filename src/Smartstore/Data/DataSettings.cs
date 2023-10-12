@@ -94,6 +94,7 @@ namespace Smartstore.Data
         internal static void SetTestMode(bool isTestMode)
         {
             _testMode = isTestMode;
+            _installed = null;
         }
 
         public static void Reload()
@@ -144,6 +145,12 @@ namespace Smartstore.Data
         public DbFactory DbFactory { get; internal set; }
 
         public string ConnectionString { get; set; }
+
+        /// <summary>
+        /// Volatile custom database collation.
+        /// Relevant during installation only.
+        /// </summary>
+        internal string Collation { get; set; }
 
         public bool IsValid()
             => DbFactory != null && ConnectionString.HasValue();

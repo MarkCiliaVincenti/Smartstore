@@ -6,7 +6,9 @@ using Smartstore.Core.Catalog.Attributes;
 using Smartstore.Core.Catalog.Search.Modelling;
 using Smartstore.Core.Data;
 using Smartstore.Core.Localization;
+using Smartstore.Core.Seo.Routing;
 using Smartstore.Core.Stores;
+using Smartstore.Core.Web;
 
 namespace Smartstore.Core.Catalog.Products
 {
@@ -15,6 +17,7 @@ namespace Smartstore.Core.Catalog.Products
         private readonly SmartDbContext _db;
         private readonly IWorkContext _workContext;
         private readonly IStoreContext _storeContext;
+        private readonly IWebHelper _webHelper;
         private readonly Lazy<IUrlHelper> _urlHelper;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly Lazy<ICatalogSearchQueryAliasMapper> _catalogSearchQueryAliasMapper;
@@ -23,6 +26,7 @@ namespace Smartstore.Core.Catalog.Products
             SmartDbContext db,
             IWorkContext workContext,
             IStoreContext storeContext,
+            IWebHelper webHelper,
             Lazy<IUrlHelper> urlHelper,
             IHttpContextAccessor httpContextAccessor,
             Lazy<ICatalogSearchQueryAliasMapper> catalogSearchQueryAliasMapper)
@@ -30,6 +34,7 @@ namespace Smartstore.Core.Catalog.Products
             _db = db;
             _workContext = workContext;
             _storeContext = storeContext;
+            _webHelper = webHelper;
             _urlHelper = urlHelper;
             _httpContextAccessor = httpContextAccessor;
             _catalogSearchQueryAliasMapper = catalogSearchQueryAliasMapper;
@@ -52,7 +57,7 @@ namespace Smartstore.Core.Catalog.Products
         /// <returns>URL query string.</returns>
         public virtual string ToQueryString(ProductVariantQuery query)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             var qs = InitialQuery ?? new MutableQueryCollection();
             var languageId = _workContext.WorkingLanguage.Id;
@@ -107,7 +112,7 @@ namespace Smartstore.Core.Catalog.Products
                 }
             }
 
-            return qs.ToString();
+            return RouteHelper.NormalizeQueryComponent(qs.ToString());
         }
 
         /// <summary>
@@ -125,7 +130,7 @@ namespace Smartstore.Core.Catalog.Products
             int bundleItemId = 0,
             ICollection<ProductVariantAttribute> attributes = null)
         {
-            Guard.NotNull(query, nameof(query));
+            Guard.NotNull(query);
 
             if (productId == 0 || !(source?.AttributesMap?.Any() ?? false))
             {
@@ -152,17 +157,18 @@ namespace Smartstore.Core.Catalog.Products
 
                         if (attribute.AttributeControlType == AttributeControlType.Datepicker)
                         {
-                            date = value.ToDateTime(new[] { "D" }, CultureInfo.CurrentCulture, DateTimeStyles.None, null);
+                            date = value.ToDateTime(null);
                             if (date == null)
                             {
                                 continue;
                             }
 
-                            value = string.Join("-", date.Value.Year, date.Value.Month, date.Value.Day);
+                            value = string.Join('-', date.Value.Year, date.Value.Month, date.Value.Day);
                         }
 
-                        var queryItem = new ProductVariantQueryItem(value)
+                        var queryItem = new ProductVariantQueryItem
                         {
+                            Value = value ?? string.Empty,
                             ProductId = productId,
                             BundleItemId = bundleItemId,
                             AttributeId = attribute.ProductAttributeId,
@@ -198,7 +204,7 @@ namespace Smartstore.Core.Catalog.Products
             }
 
             var url = _urlHelper.Value.RouteUrl("Product", new { SeName = productSlug });
-            return url.TrimEnd('/') + ToQueryString(query);
+            return url + ToQueryString(query);
         }
 
         /// <summary>
@@ -248,10 +254,10 @@ namespace Smartstore.Core.Catalog.Products
                 var query = new ProductVariantQuery();
                 await AddAttributesToQueryAsync(query, selection, productId);
 
-                url = url.TrimEnd('/') + ToQueryString(query);
+                url += ToQueryString(query);
             }
 
-            return store.GetHost() + url;
+            return store.GetAbsoluteUrl(request.PathBase, url);
         }
     }
 }

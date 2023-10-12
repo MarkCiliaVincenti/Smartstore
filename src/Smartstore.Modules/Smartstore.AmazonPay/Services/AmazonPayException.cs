@@ -1,21 +1,22 @@
 ﻿using System.Net;
 using Amazon.Pay.API.Types;
 using Smartstore.Core.Checkout.Payment;
+using Smartstore.Http;
+using Smartstore.Web.Controllers;
 
 namespace Smartstore.AmazonPay.Services
 {
     public class AmazonPayException : PaymentException
     {
-        const string ProviderName = "AmazonPay";
-
-        public AmazonPayException(string message, Exception innerException)
-            : base(message, innerException, ProviderName)
+        public AmazonPayException(string message)
+            : this(message, (Exception)null)
         {
         }
 
-        public AmazonPayException(string message)
-            : base(message, ProviderName)
+        public AmazonPayException(string message, Exception innerException)
+            : base(message, innerException, AmazonPayProvider.SystemName)
         {
+            RedirectRoute = CreateRouteInfo();
         }
 
         public AmazonPayException(AmazonPayResponse response)
@@ -33,8 +34,12 @@ namespace Smartstore.AmazonPay.Services
             : base(message,
                   new PaymentResponse((HttpStatusCode)response.Status, response.Headers),
                   new Exception(response.GetFullMessage()),
-                  ProviderName)
+                  AmazonPayProvider.SystemName)
         {
+            RedirectRoute = CreateRouteInfo();
         }
+
+        private RouteInfo CreateRouteInfo()
+            => new(nameof(ShoppingCartController.Cart), "ShoppingCart", (object)null);
     }
 }

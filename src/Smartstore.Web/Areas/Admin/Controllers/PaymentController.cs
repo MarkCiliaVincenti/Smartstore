@@ -57,11 +57,12 @@ namespace Smartstore.Admin.Controllers
                 var model = _moduleManager.ToProviderModel<IPaymentMethod, PaymentMethodModel>(provider);
                 var instance = provider.Value;
 
-                model.IsActive = provider.IsPaymentMethodActive(_paymentSettings);
+                model.IsActive = provider.IsPaymentProviderEnabled(_paymentSettings);
                 model.SupportCapture = instance.SupportCapture;
                 model.SupportPartiallyRefund = instance.SupportPartiallyRefund;
                 model.SupportRefund = instance.SupportRefund;
                 model.SupportVoid = instance.SupportVoid;
+                model.RecurringPaymentTypeEnum = instance.RecurringPaymentType;
                 model.RecurringPaymentType = instance.RecurringPaymentType.GetLocalizedEnum();
 
                 paymentMethodsModel.Add(model);
@@ -76,24 +77,17 @@ namespace Smartstore.Admin.Controllers
         {
             var provider = _providerManager.GetProvider<IPaymentMethod>(systemName);
 
-            if (activate && !provider.Value.IsActive)
+            if (!activate)
             {
-                NotifyWarning(T("Admin.Configuration.Payment.CannotActivatePaymentMethod"));
+                _paymentSettings.ActivePaymentMethodSystemNames.Remove(x => x.EqualsNoCase(provider.Metadata.SystemName));
             }
             else
             {
-                if (!activate)
-                {
-                    _paymentSettings.ActivePaymentMethodSystemNames.Remove(x => x.EqualsNoCase(provider.Metadata.SystemName));
-                }
-                else
-                {
-                    _paymentSettings.ActivePaymentMethodSystemNames.Add(provider.Metadata.SystemName);
-                }
-
-                await Services.SettingFactory.SaveSettingsAsync(_paymentSettings);
-                await _widgetService.ActivateWidgetAsync(provider.Metadata.SystemName, activate);
+                _paymentSettings.ActivePaymentMethodSystemNames.Add(provider.Metadata.SystemName);
             }
+
+            await Services.SettingFactory.SaveSettingsAsync(_paymentSettings);
+            await _widgetService.ActivateWidgetAsync(provider.Metadata.SystemName, activate);
 
             return RedirectToAction(nameof(Providers));
         }
@@ -171,7 +165,7 @@ namespace Smartstore.Admin.Controllers
                 await _db.SaveChangesAsync();
             }
 
-            // Add\remove assigned rule sets.
+            // Add/remove assigned rule sets.
             await _ruleService.ApplyRuleSetMappingsAsync(paymentMethod, model.SelectedRuleSetIds);
 
             await _storeMappingService.ApplyStoreMappingsAsync(paymentMethod, model.SelectedStoreIds);

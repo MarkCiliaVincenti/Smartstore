@@ -7,13 +7,17 @@ using Smartstore.Core.Common.Services;
 using Smartstore.Core.Data;
 using Smartstore.Core.Identity;
 using Smartstore.Core.Localization;
+using Smartstore.Data.Hooks;
 using Smartstore.Engine.Modularity;
 
 namespace Smartstore.Core.Checkout.Tax
 {
-    public partial class TaxService : ITaxService
+    public partial class TaxService : AsyncDbSaveHook<TaxCategory>, ITaxService
     {
         const string DefaultTaxFormat = "{0} *";
+
+        [GeneratedRegex("^(\\w{2})(.*)")]
+        private static partial Regex VatNumberRegex();
 
         private readonly Dictionary<TaxRateCacheKey, TaxRate> _cachedTaxRates = new();
         private readonly Dictionary<TaxAddressKey, Address> _cachedTaxAddresses = new();
@@ -39,6 +43,35 @@ namespace Smartstore.Core.Checkout.Tax
             _localizationService = localizationService;
             _taxSettings = taxSettings;
         }
+
+        #region Hook 
+
+        protected override Task<HookResult> OnDeletedAsync(TaxCategory entity, IHookedEntity entry, CancellationToken cancelToken)
+            => Task.FromResult(HookResult.Ok);
+
+        public override async Task OnAfterSaveCompletedAsync(IEnumerable<IHookedEntity> entries, CancellationToken cancelToken)
+        {
+            var deletedTaxCategoryIds = entries
+                .Where(x => x.InitialState == EntityState.Deleted)
+                .Select(x => x.Entity)
+                .OfType<TaxCategory>()
+                .Select(x => x.Id)
+                .ToList();
+
+            if (deletedTaxCategoryIds.Count > 0)
+            {
+                var newTaxCategoryId = await _db.TaxCategories
+                    .OrderBy(x => x.DisplayOrder)
+                    .Select(x => x.Id)
+                    .FirstOrDefaultAsync(cancelToken);
+
+                await _db.Products
+                    .Where(x => deletedTaxCategoryIds.Contains(x.TaxCategoryId))
+                    .ExecuteUpdateAsync(x => x.SetProperty(p => p.TaxCategoryId, p => newTaxCategoryId), cancelToken);
+            }
+        }
+
+        #endregion
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public virtual Provider<ITaxProvider> LoadActiveTaxProvider()
@@ -76,7 +109,7 @@ namespace Smartstore.Core.Checkout.Tax
             var activeTaxProvider = LoadActiveTaxProvider();
             if (activeTaxProvider == null || await IsTaxExemptAsync(product, customer))
             {
-                return new TaxRate(0m, taxCategoryId);
+                return new(0m, taxCategoryId);
             }
 
             var request = new TaxRateRequest
@@ -91,19 +124,18 @@ namespace Smartstore.Core.Checkout.Tax
 
         public virtual async Task<VatCheckResult> GetVatNumberStatusAsync(string fullVatNumber)
         {
-            if (!fullVatNumber.HasValue())
+            if (fullVatNumber.IsEmpty())
             {
-                return new VatCheckResult(VatNumberStatus.Empty, fullVatNumber);
+                return new(VatNumberStatus.Empty, fullVatNumber);
             }
 
             // DE 111 1111 111 or DE1111111111
             // More advanced regex - https://forum.codeigniter.com/thread-31835.html
             // This regex only checks whether the first two chars are alphanumeric...
-            var regex = new Regex(@"^(\w{2})(.*)");
-            var match = regex.Match(fullVatNumber.Trim());
+            var match = VatNumberRegex().Match(fullVatNumber.Trim());
             if (!match.Success)
             {
-                return new VatCheckResult(VatNumberStatus.Invalid, fullVatNumber);
+                return new(VatNumberStatus.Invalid, fullVatNumber);
             }
 
             var twoLetterIsoCode = match.Groups[1].Value;
@@ -111,12 +143,12 @@ namespace Smartstore.Core.Checkout.Tax
 
             if (twoLetterIsoCode.IsEmpty() || vatNumber.IsEmpty())
             {
-                return new VatCheckResult(VatNumberStatus.Empty, fullVatNumber);
+                return new(VatNumberStatus.Empty, fullVatNumber);
             }
 
             if (!_taxSettings.EuVatUseWebService)
             {
-                return new VatCheckResult(VatNumberStatus.Unknown, fullVatNumber);
+                return new(VatNumberStatus.Unknown, fullVatNumber);
             }
 
             try
@@ -129,18 +161,16 @@ namespace Smartstore.Core.Checkout.Tax
                     countryCode = twoLetterIsoCode.ToUpper()
                 });
 
-                var result = new VatCheckResult(response.valid ? VatNumberStatus.Valid : VatNumberStatus.Invalid, fullVatNumber)
+                return new(response.valid ? VatNumberStatus.Valid : VatNumberStatus.Invalid, fullVatNumber)
                 {
                     Name = response.name,
                     Address = response.address,
                     CountryCode = response.countryCode,
                 };
-
-                return result;
             }
             catch (Exception ex)
             {
-                return new VatCheckResult(VatNumberStatus.Unknown, fullVatNumber)
+                return new(VatNumberStatus.Unknown, fullVatNumber)
                 {
                     Exception = ex
                 };
@@ -345,7 +375,7 @@ namespace Smartstore.Core.Checkout.Tax
         /// </returns>
         protected virtual async Task<Address> GetTaxAddressAsync(Customer customer, Product product = null)
         {
-            Guard.NotNull(customer, nameof(customer));
+            Guard.NotNull(customer);
 
             var productIsEsd = product?.IsEsd ?? false;
             var cacheKey = new TaxAddressKey(customer.Id, productIsEsd);
@@ -358,16 +388,13 @@ namespace Smartstore.Core.Checkout.Tax
             // In addition, the origin of the IP addresses should also be checked for verification.
             var basedOn = _taxSettings.TaxBasedOn;
 
-            if (_taxSettings.EuVatEnabled && productIsEsd && IsEuConsumer(customer))
+            if ((_taxSettings.EuVatEnabled && productIsEsd && IsEuConsumer(customer)) ||
+                (basedOn == TaxBasedOn.ShippingAddress && customer.ShippingAddress == null))
             {
                 basedOn = TaxBasedOn.BillingAddress;
             }
 
-            if (basedOn == TaxBasedOn.BillingAddress && customer?.BillingAddress == null)
-            {
-                basedOn = TaxBasedOn.DefaultAddress;
-            }
-            else if (basedOn == TaxBasedOn.ShippingAddress && customer?.ShippingAddress == null)
+            if (basedOn == TaxBasedOn.BillingAddress && customer.BillingAddress == null)
             {
                 basedOn = TaxBasedOn.DefaultAddress;
             }
